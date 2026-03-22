@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
-import { adsAPI, partnersAPI } from '@/api'
+import { adsAPI, partnersAPI, utmAPI } from '@/api'
 import { fmt, fmtDate, today, monthStart } from '@/utils'
 import { Button, Input, Select, Modal, Table, Tr, Td, Badge, Empty, Spinner, Textarea } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
-import { Plus, Edit2, Trash2, ExternalLink, TrendingUp, Copy, Link } from 'lucide-react'
+import { Plus, Edit2, Trash2, Copy, Link, ExternalLink } from 'lucide-react'
 import { useAuthStore } from '@/store'
 import toast from 'react-hot-toast'
 
@@ -14,6 +14,93 @@ const EMPTY_FORM = {
   target_url: '', target_type: 'bot',
 }
 
+// ── UTM ссылки попап ──────────────────────────────────────────────────────────
+function UtmLinksModal({ campaign, onClose }) {
+  const base = window.location.origin
+  const utmUrl = `${base}/go/${campaign.utm_code}`
+
+  const copy = (text, label) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text)
+        .then(() => toast.success(`${label} скопировано`))
+        .catch(() => toast.error('Не удалось скопировать'))
+    } else {
+      // fallback
+      const el = document.createElement('textarea')
+      el.value = text
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      toast.success(`${label} скопировано`)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Кампания создана — UTM ссылки" size="md">
+      <div className="space-y-4">
+
+        <div className="p-3 bg-success-50 border border-success-100 rounded-xl text-sm text-success-600">
+          Используйте эту ссылку в рекламе вместо прямой ссылки на бота/канал
+        </div>
+
+        {/* Main UTM link */}
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-2">
+            Короткая UTM-ссылка (вставляйте в рекламу)
+          </div>
+          <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <Link size={14} className="text-primary-500 flex-shrink-0" />
+            <code className="text-sm font-mono flex-1 text-primary-600 break-all">{utmUrl}</code>
+            <button
+              onClick={() => copy(utmUrl, 'Ссылка')}
+              className="flex-shrink-0 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 flex items-center gap-1"
+            >
+              <Copy size={11} /> Копировать
+            </button>
+          </div>
+          {campaign.target_url && (
+            <div className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+              <span>Ведёт на:</span>
+              <span className="font-mono text-gray-500 truncate">{campaign.target_url}</span>
+            </div>
+          )}
+        </div>
+
+        {/* UTM code for LEADTEH */}
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-2">
+            UTM код (для LEADTEH — параметр при старте сценария)
+          </div>
+          <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <code className="text-sm font-mono flex-1 text-warn-600">{campaign.utm_code}</code>
+            <button
+              onClick={() => copy(campaign.utm_code, 'UTM код')}
+              className="flex-shrink-0 px-3 py-1.5 bg-warn-600 text-white rounded-lg text-xs font-medium hover:bg-warn-700 flex items-center gap-1"
+            >
+              <Copy size={11} /> Копировать
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 text-xs text-primary-600 space-y-1">
+          <div className="font-medium mb-1.5">Как использовать:</div>
+          <div>1. UTM-ссылку вставьте в рекламный пост</div>
+          <div>2. UTM код зашейте в LEADTEH как стартовый параметр</div>
+          <div>3. При входе пользователя LEADTEH шлёт POST /api/utm/lead</div>
+          <div>4. При оплате LEADTEH шлёт POST /api/payments/webhook</div>
+          <div className="mt-2 text-gray-400">Инструкция: Настройки → Документация API</div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={onClose}>Готово</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── AdForm ────────────────────────────────────────────────────────────────────
 function AdForm({ initial, onSave, onClose, partners = [] }) {
   const [form, setForm] = useState(initial ? {
     ...initial,
@@ -54,26 +141,27 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
     <form onSubmit={handleSave} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Input label="Дата" type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
-        <Input label="Формат" value={form.format} onChange={e => set('format', e.target.value)} placeholder="2/48, 1/24, 24/24" />
+        <Input label="Формат" value={form.format} onChange={e => set('format', e.target.value)} placeholder="2/48, 1/24" />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Название канала" value={form.channel_name} onChange={e => set('channel_name', e.target.value)} placeholder="TikTok Updates 🔥" required />
+        <Input label="Название канала" value={form.channel_name} onChange={e => set('channel_name', e.target.value)} placeholder="TikTok Updates" required />
         <Input label="Ссылка на канал" value={form.channel_url} onChange={e => set('channel_url', e.target.value)} placeholder="https://t.me/..." />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Input label="Сумма ₽" type="number" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} required placeholder="10000" />
         <Input label="Привлечено ПДП" type="number" value={form.subscribers_gained} onChange={e => set('subscribers_gained', e.target.value)} placeholder="1234" />
       </div>
-      <Input label="Скриншот (ссылка)" value={form.screenshot_url} onChange={e => set('screenshot_url', e.target.value)} placeholder="https://disk.yandex.ru/..." />
-      <Textarea label="Заметки" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
 
+      {/* Target URL для UTM */}
       <div>
-        <label className="text-xs font-medium text-gray-500 mb-2 block">Целевая ссылка (куда ведёт реклама)</label>
+        <div className="text-xs font-medium text-gray-500 mb-2">
+          Целевая ссылка — куда переходит пользователь после клика
+        </div>
         <div className="flex gap-2 mb-2">
           {[
-            { value: 'bot',     label: '🤖 Бот' },
-            { value: 'channel', label: '📢 Канал' },
-            { value: 'custom',  label: '🔗 Другое' },
+            { value: 'bot',     label: 'Бот' },
+            { value: 'channel', label: 'Канал' },
+            { value: 'custom',  label: 'Другое' },
           ].map(opt => (
             <button key={opt.value} type="button"
               onClick={() => set('target_type', opt.value)}
@@ -88,32 +176,31 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
           value={form.target_url}
           onChange={e => set('target_url', e.target.value)}
           placeholder={
-            form.target_type === 'bot' ? 'https://t.me/your_vpn_bot' :
+            form.target_type === 'bot'     ? 'https://t.me/your_vpn_bot' :
             form.target_type === 'channel' ? 'https://t.me/your_channel' :
             'https://example.com'
           }
         />
         <div className="text-xs text-gray-400 mt-1">
-          {form.target_type === 'bot' ? 'Ссылка на бота — пользователь откроет бота' :
-           form.target_type === 'channel' ? 'Ссылка на канал' :
-           'Произвольный URL для редиректа'}
+          Система создаст короткую UTM-ссылку которая будет вести сюда и считать клики
         </div>
       </div>
 
+      <Textarea label="Заметки" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
+
+      {/* Budget source */}
       <div>
         <label className="text-xs font-medium text-gray-500 mb-2 block">Источник бюджета</label>
         <div className="flex gap-2 flex-wrap">
           {[
-            { value: 'account',    label: '💳 Со счёта' },
-            { value: 'investment', label: '💼 Инвестиция партнёра' },
-            { value: 'stats_only', label: '📊 Только статистика' },
+            { value: 'account',    label: 'Со счёта' },
+            { value: 'investment', label: 'Инвестиция партнёра' },
+            { value: 'stats_only', label: 'Только статистика' },
           ].map(opt => (
             <button key={opt.value} type="button"
               onClick={() => set('budget_source', opt.value)}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                form.budget_source === opt.value
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                form.budget_source === opt.value ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
               {opt.label}
             </button>
@@ -132,89 +219,32 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
             ))}
           </Select>
         )}
-        {form.budget_source === 'investment' && (
-          <div className="text-xs text-warn-600 mt-1">⚠️ Сумма будет записана как долг перед партнёром</div>
-        )}
-        {form.budget_source === 'account' && (
-          <div className="text-xs text-gray-400 mt-1">Сумма спишется со счёта как расход</div>
-        )}
-        {form.budget_source === 'stats_only' && (
-          <div className="text-xs text-gray-400 mt-1">Только для учёта ROI, ничего не списывается</div>
-        )}
+        <div className="text-xs text-gray-400 mt-1">
+          {form.budget_source === 'account'    && 'Спишется со счёта как расход'}
+          {form.budget_source === 'investment' && 'Записывается как долг перед партнёром'}
+          {form.budget_source === 'stats_only' && 'Только для учёта ROI, ничего не списывается'}
+        </div>
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
         <Button type="button" variant="ghost" onClick={onClose}>Отмена</Button>
-        <Button type="submit" variant="primary" loading={loading}>{initial?.id ? 'Сохранить' : 'Добавить'}</Button>
+        <Button type="submit" variant="primary" loading={loading}>
+          {initial?.id ? 'Сохранить' : 'Создать кампанию'}
+        </Button>
       </div>
     </form>
   )
 }
 
-
-function UtmLinksModal({ campaign, onClose }) {
-  const base = window.location.origin
-  const utmUrl = `${base}/go/${campaign.utm_code}`
-  const copy = (text) => { navigator.clipboard?.writeText(text); }
-
-  return (
-    <Modal open onClose={onClose} title="✅ Кампания создана — UTM ссылки" size="lg">
-      <div className="space-y-4">
-        <div className="p-3 bg-success-50 border border-success-100 rounded-xl text-sm text-success-600">
-          UTM код автоматически сгенерирован. Используйте ссылки ниже в рекламе.
-        </div>
-
-        <div>
-          <label className="text-xs font-medium text-gray-500 mb-1.5 block">Основная UTM ссылка (через ваш сервер)</label>
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
-            <code className="text-sm font-mono flex-1 break-all text-primary-600">{utmUrl}</code>
-            <button onClick={() => copy(utmUrl)} className="p-1.5 hover:text-primary-600 text-gray-400 flex-shrink-0">
-              <Copy size={14} />
-            </button>
-          </div>
-          <div className="text-xs text-gray-400 mt-1">
-            → Ведёт на: <span className="font-mono">{campaign.target_url || '(целевая ссылка не указана)'}</span>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs font-medium text-gray-500 mb-1.5 block">UTM код для LEADTEH / VPN бота</label>
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
-            <code className="text-sm font-mono flex-1 text-warn-600">{campaign.utm_code}</code>
-            <button onClick={() => copy(campaign.utm_code)} className="p-1.5 hover:text-primary-600 text-gray-400 flex-shrink-0">
-              <Copy size={14} />
-            </button>
-          </div>
-          <div className="text-xs text-gray-400 mt-1">
-            Передайте этот код в LEADTEH как стартовый параметр бота
-          </div>
-        </div>
-
-        <div className="bg-primary-50 border border-primary-100 rounded-xl p-4">
-          <div className="text-xs font-medium text-primary-600 mb-2">Что настроить в LEADTEH:</div>
-          <div className="text-xs text-primary-600 space-y-1">
-            <div>1. В стартовом сообщении зашейте UTM код как start-параметр</div>
-            <div>2. При входе пользователя → POST /api/utm/lead</div>
-            <div>3. При оплате → POST /api/payments/webhook</div>
-          </div>
-        </div>
-
-        <div className="flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Закрыть</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AdsPage() {
   const [campaigns, setCampaigns] = useState([])
-  const [summary, setSummary] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null)
-  const [utmModal, setUtmModal] = useState(null)  // показ UTM ссылок после создания
-  const [partners, setPartners] = useState([])
-  const [filters, setFilters] = useState({ date_from: monthStart(), date_to: today() })
+  const [summary, setSummary]     = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [modal, setModal]         = useState(null)
+  const [utmModal, setUtmModal]   = useState(null)
+  const [partners, setPartners]   = useState([])
+  const [filters, setFilters]     = useState({ date_from: monthStart(), date_to: today() })
   const { isEditor } = useAuthStore()
 
   const load = useCallback(async () => {
@@ -229,13 +259,33 @@ export default function AdsPage() {
     } finally { setLoading(false) }
   }, [filters])
 
-  useEffect(() => { load(); partnersAPI.list().then(r => setPartners(r.data)).catch(() => {}) }, [load])
+  useEffect(() => {
+    load()
+    partnersAPI.list().then(r => setPartners(r.data)).catch(() => {})
+  }, [load])
 
   const handleDelete = async (id) => {
     if (!confirm('Удалить кампанию?')) return
     await adsAPI.delete(id)
     toast.success('Удалено')
     load()
+  }
+
+  const copyUtmLink = (campaign) => {
+    const url = `${window.location.origin}/go/${campaign.utm_code}`
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast.success('UTM ссылка скопирована'))
+        .catch(() => toast.error('Не удалось скопировать'))
+    } else {
+      const el = document.createElement('textarea')
+      el.value = url
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      toast.success('UTM ссылка скопирована')
+    }
   }
 
   return (
@@ -250,7 +300,7 @@ export default function AdsPage() {
 
       {/* Summary */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 p-3 md:p-5 pb-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 md:p-5 pb-0">
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs text-gray-400 mb-1">Потрачено</div>
             <div className="text-xl font-medium">{fmt(summary.total_spent)}</div>
@@ -266,11 +316,6 @@ export default function AdsPage() {
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs text-gray-400 mb-1">Кампаний</div>
             <div className="text-xl font-medium">{summary.campaigns_count}</div>
-            {summary.best_channel && (
-              <div className="text-xs text-gray-400 mt-1 truncate" title={summary.best_channel.name}>
-                Лучший: {summary.best_channel.name}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -278,7 +323,7 @@ export default function AdsPage() {
       {/* Filters */}
       <div className="flex gap-2 p-3 md:p-5 pb-0 flex-wrap">
         <Input type="date" value={filters.date_from} onChange={e => setFilters(f => ({ ...f, date_from: e.target.value }))} className="w-36" />
-        <Input type="date" value={filters.date_to} onChange={e => setFilters(f => ({ ...f, date_to: e.target.value }))} className="w-36" />
+        <Input type="date" value={filters.date_to}   onChange={e => setFilters(f => ({ ...f, date_to: e.target.value }))}   className="w-36" />
       </div>
 
       <div className="p-3 md:p-5">
@@ -290,11 +335,10 @@ export default function AdsPage() {
           } />
         ) : (
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            <Table headers={['Дата', 'Формат', 'Канал', 'Сумма', 'ПДП', '₽/ПДП', 'Скрин', '']}>
+            <Table headers={['Дата', 'Канал', 'Бюджет', 'Сумма', 'ПДП', '₽/ПДП', 'UTM ссылка', '']}>
               {campaigns.map(c => (
                 <Tr key={c.id} className="group">
                   <Td className="text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.date)}</Td>
-                  <Td><Badge variant="info">{c.format || '—'}</Badge></Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
                       {c.channel_url ? (
@@ -309,12 +353,12 @@ export default function AdsPage() {
                     </div>
                   </Td>
                   <Td>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                       c.budget_source === 'investment' ? 'bg-warn-50 text-warn-600' :
                       c.budget_source === 'stats_only' ? 'bg-gray-100 text-gray-400' :
                       'bg-success-50 text-success-600'
                     }`}>
-                      {c.budget_source === 'investment' ? '💼' : c.budget_source === 'stats_only' ? '📊' : '💳'}
+                      {c.budget_source === 'investment' ? 'Инвест.' : c.budget_source === 'stats_only' ? 'Статист.' : 'Счёт'}
                     </span>
                   </Td>
                   <Td className="font-medium">{fmt(c.amount)}</Td>
@@ -326,6 +370,34 @@ export default function AdsPage() {
                       </span>
                     ) : '—'}
                   </Td>
+
+                  {/* UTM ссылка — видна всегда */}
+                  <Td>
+                    {c.utm_code ? (
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-xs font-mono text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded">
+                          /go/{c.utm_code}
+                        </code>
+                        <button
+                          onClick={() => copyUtmLink(c)}
+                          title="Копировать UTM ссылку"
+                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-primary-600 transition-colors"
+                        >
+                          <Copy size={12} />
+                        </button>
+                        <button
+                          onClick={() => setUtmModal(c)}
+                          title="Показать все ссылки"
+                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-primary-600 transition-colors"
+                        >
+                          <Link size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-300">нет</span>
+                    )}
+                  </Td>
+
                   <Td>
                     {isEditor() && (
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -341,9 +413,24 @@ export default function AdsPage() {
         )}
       </div>
 
-      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'add' ? 'Новая кампания' : 'Редактировать кампанию'} size="lg">
-        {modal && <AdForm initial={modal === 'add' ? null : modal} onSave={(newCampaign) => { setModal(null); load(); if (newCampaign?.utm_code) setUtmModal(newCampaign) }} onClose={() => setModal(null)} partners={partners} />}
-      </Modal>
+      {modal && (
+        <Modal open onClose={() => setModal(null)} title={modal === 'add' ? 'Новая кампания' : 'Редактировать кампанию'} size="lg">
+          <AdForm
+            initial={modal === 'add' ? null : modal}
+            onSave={(newCampaign) => {
+              setModal(null)
+              load()
+              if (newCampaign?.utm_code) setUtmModal(newCampaign)
+            }}
+            onClose={() => setModal(null)}
+            partners={partners}
+          />
+        </Modal>
+      )}
+
+      {utmModal && (
+        <UtmLinksModal campaign={utmModal} onClose={() => setUtmModal(null)} />
+      )}
     </div>
   )
 }
