@@ -66,7 +66,7 @@ function DayTransactionsModal({ date, onClose }) {
   )
 }
 
-// ── Компактная тепловая карта ─────────────────────────────────────────────────
+// ── Тепловая карта с числами ────────────────────────────────────────────────
 function HeatMap({ data, onDayClick }) {
   if (!data || data.length === 0) return (
     <div className="text-xs text-gray-300 text-center py-4">Нет данных</div>
@@ -89,12 +89,13 @@ function HeatMap({ data, onDayClick }) {
   })
 
   const col = (v) => v === 0 ? '#F1EFE8' : `rgba(83,74,183,${(0.12 + v * 0.88).toFixed(2)})`
+  const textCol = (v) => v > 0.55 ? 'rgba(255,255,255,0.9)' : '#888780'
 
   return (
-    <div>
-      <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, minmax(0,1fr))' }}>
+    <div className="max-w-lg">
+      <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0,1fr))' }}>
         {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => (
-          <div key={d} className="text-center text-gray-300 pb-0.5" style={{ fontSize: '9px' }}>{d}</div>
+          <div key={d} className="text-center pb-1" style={{ fontSize: '10px', color: '#B4B2A9' }}>{d}</div>
         ))}
         {Array.from({ length: dayOffset }, (_, i) => <div key={'e' + i} />)}
         {days.map(({ day, amount, intensity, date }) => (
@@ -102,17 +103,27 @@ function HeatMap({ data, onDayClick }) {
             key={day}
             title={`${date}: ${fmt(amount)}`}
             onClick={() => amount > 0 && onDayClick?.(date)}
-            className={`rounded-sm transition-all ${amount > 0 ? 'cursor-pointer hover:ring-1 hover:ring-primary-400 hover:scale-110' : ''}`}
-            style={{ background: col(intensity), aspectRatio: '1', minHeight: '12px' }}
-          />
+            className={`rounded flex items-center justify-center transition-all select-none ${amount > 0 ? 'cursor-pointer hover:ring-1 hover:ring-primary-400' : ''}`}
+            style={{
+              background: col(intensity),
+              aspectRatio: '1',
+              fontSize: '10px',
+              fontWeight: 500,
+              color: textCol(intensity),
+              minHeight: '0',
+              maxHeight: '32px',
+            }}
+          >
+            {day}
+          </div>
         ))}
       </div>
-      <div className="flex items-center gap-1 mt-2 justify-end">
-        <span className="text-gray-300" style={{ fontSize: '9px' }}>меньше</span>
+      <div className="flex items-center gap-1 mt-2">
+        <span style={{ fontSize: '9px', color: '#B4B2A9' }}>меньше</span>
         {[0, 0.25, 0.5, 0.75, 1].map((v, i) => (
-          <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{ background: col(v) }} />
+          <div key={i} className="w-3 h-3 rounded-sm" style={{ background: col(v) }} />
         ))}
-        <span className="text-gray-300" style={{ fontSize: '9px' }}>больше</span>
+        <span style={{ fontSize: '9px', color: '#B4B2A9' }}>больше</span>
       </div>
     </div>
   )
@@ -383,22 +394,52 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Recent Transactions */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <div className="text-xs font-medium text-gray-500 mb-3">Последние операции</div>
-          <div>
-            {data.recent_transactions.slice(0, 8).map(t => (
-              <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                <div className={`w-1.5 h-5 rounded-full flex-shrink-0 ${t.type === 'income' ? 'bg-success-600' : 'bg-danger-600'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{t.description || t.category?.name || (t.type === 'income' ? 'Доход' : 'Расход')}</div>
-                  <div className="text-xs text-gray-400">{fmtDate(t.date)}</div>
+        {/* Recent: Transactions + Payments */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="bg-white border border-gray-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-500 mb-3">Последние операции</div>
+            <div>
+              {data.recent_transactions.slice(0, 6).map(t => (
+                <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <div className={`w-1.5 h-5 rounded-full flex-shrink-0 ${t.type === 'income' ? 'bg-success-600' : 'bg-danger-600'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate">{t.description || t.category?.name || (t.type === 'income' ? 'Доход' : 'Расход')}</div>
+                    <div className="text-xs text-gray-400">{fmtDate(t.date)}</div>
+                  </div>
+                  <div className={`text-sm font-medium whitespace-nowrap ${t.type === 'income' ? 'text-success-600' : 'text-danger-600'}`}>
+                    {t.type === 'income' ? '+' : '-'}{fmt(t.amount)}
+                  </div>
                 </div>
-                <div className={`text-sm font-medium ${t.type === 'income' ? 'text-success-600' : 'text-danger-600'}`}>
-                  {t.type === 'income' ? '+' : '-'}{fmt(t.amount)}
-                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-100 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-medium text-gray-500">Последние платежи (API)</div>
+              <a href="/payments" className="text-xs text-primary-600 hover:underline">все →</a>
+            </div>
+            {data.recent_payments && data.recent_payments.length > 0 ? (
+              <div>
+                {data.recent_payments.slice(0, 6).map(p => (
+                  <div key={p.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <div className="w-1.5 h-5 rounded-full flex-shrink-0 bg-primary-400" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{p.plan || p.customer_email || p.customer_id || 'Платёж'}</div>
+                      <div className="text-xs text-gray-400">{p.customer_email || p.customer_id || fmtDate(p.date)}</div>
+                    </div>
+                    <div className="text-sm font-medium text-primary-600 whitespace-nowrap">
+                      +{fmt(p.amount)}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              <div className="text-xs text-gray-300 text-center py-6">
+                Платежей через API пока нет.<br/>
+                <span className="text-primary-400">Настройте webhook в разделе Платежи</span>
+              </div>
+            )}
           </div>
         </div>
 
