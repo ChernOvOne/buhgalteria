@@ -10,17 +10,10 @@ err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${BLUE}[→]${NC} $1"; }
 
 INSTALL_DIR="/opt/buhgalteria"
+REPO_URL="https://github.com/ChernOvOne/buhgalteria.git"
 
-# Если скрипт запущен из уже клонированного репо — используем текущую директорию
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
-    USE_LOCAL=true
-    log "Найден локальный проект в $SCRIPT_DIR"
-else
-    USE_LOCAL=false
-    read -p "URL Git репозитория (например https://github.com/user/buhgalteria): " REPO_URL
-    [ -z "$REPO_URL" ] && err "URL репозитория обязателен"
-fi
+# Принудительно читаем ввод с терминала (а не из pipe)
+exec </dev/tty
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
