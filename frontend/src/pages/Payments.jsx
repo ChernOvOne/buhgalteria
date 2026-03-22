@@ -294,11 +294,14 @@ export default function PaymentsPage() {
                   <Td className="font-medium">{k.name}</Td>
                   <Td>
                     <div className="flex items-center gap-2">
-                      <code className="text-xs font-mono bg-gray-50 px-2 py-0.5 rounded">
-                        {k.key.slice(0, 12)}...
+                      <code className="text-xs font-mono bg-gray-50 px-2 py-0.5 rounded max-w-48 truncate select-all">
+                        {k.key}
                       </code>
-                      <button onClick={() => copyToClipboard(k.key)}
-                        className="p-1 hover:text-primary-600 text-gray-400">
+                      <button
+                        onClick={() => copyToClipboard(k.key)}
+                        className="p-1.5 rounded hover:bg-primary-50 hover:text-primary-600 text-gray-400 flex-shrink-0"
+                        title="Скопировать ключ"
+                      >
                         <Copy size={12} />
                       </button>
                     </div>
