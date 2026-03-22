@@ -5,20 +5,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
-    wget \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Скачиваем DejaVu шрифты для кириллицы в PDF
+# Копируем шрифты из системного пакета
 RUN mkdir -p /app/fonts && \
-    wget -q "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2" \
-    -O /tmp/dejavu.tar.bz2 && \
-    tar -xjf /tmp/dejavu.tar.bz2 -C /tmp && \
-    cp /tmp/dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf /app/fonts/ && \
-    cp /tmp/dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf /app/fonts/ && \
-    rm -rf /tmp/dejavu*
+    cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /app/fonts/ && \
+    cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf /app/fonts/
 
 COPY . .
 
