@@ -36,7 +36,6 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
         amount: parseFloat(form.amount),
         subscribers_gained: form.subscribers_gained !== '' ? parseInt(form.subscribers_gained) : null,
       }
-      if (initial?.id) await adsAPI.update(initial.id, payload)
       if (initial?.id) {
         await adsAPI.update(initial.id, payload)
         toast.success('Обновлено')
@@ -44,7 +43,7 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
       } else {
         const res = await adsAPI.create(payload)
         toast.success('Кампания создана')
-        onSave?.(res.data)  // передаём данные новой кампании
+        onSave?.(res.data)
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Ошибка')
@@ -95,8 +94,8 @@ function AdForm({ initial, onSave, onClose, partners = [] }) {
           }
         />
         <div className="text-xs text-gray-400 mt-1">
-          {form.target_type === 'bot' ? 'Система добавит ?start=utm_code автоматически' :
-           form.target_type === 'channel' ? 'Клики будут считаться, но лиды только через API' :
+          {form.target_type === 'bot' ? 'Ссылка на бота — пользователь откроет бота' :
+           form.target_type === 'channel' ? 'Ссылка на канал' :
            'Произвольный URL для редиректа'}
         </div>
       </div>
@@ -174,7 +173,7 @@ function UtmLinksModal({ campaign, onClose }) {
             </button>
           </div>
           <div className="text-xs text-gray-400 mt-1">
-            → Редирект на: {campaign.target_url || '(не указана)'}{campaign.target_type === 'bot' ? ` (с ?start=${campaign.utm_code})` : ''}
+            → Ведёт на: <span className="font-mono">{campaign.target_url || '(целевая ссылка не указана)'}</span>
           </div>
         </div>
 
