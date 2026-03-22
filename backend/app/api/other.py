@@ -486,6 +486,20 @@ async def get_dashboard(
             "type": m.type, "progress_percent": pct,
         })
 
+    # Последние платежи через API
+    from app.models import Payment
+    pay_r = await db.execute(
+        select(Payment).order_by(Payment.created_at.desc()).limit(6)
+    )
+    recent_payments = [
+        {
+            "id": p.id, "amount": p.amount, "plan": p.plan,
+            "plan_tag": p.plan_tag, "customer_email": p.customer_email,
+            "customer_id": p.customer_id, "date": str(p.date),
+        }
+        for p in pay_r.scalars().all()
+    ]
+
     return {
         "today": today_kpi.model_dump(),
         "month": month_kpi.model_dump(),
@@ -497,6 +511,7 @@ async def get_dashboard(
         "servers_warning": servers_warn,
         "ad_stats": ad_stats,
         "recent_transactions": recent,
+        "recent_payments": recent_payments,
         "milestones": milestones,
     }
 
