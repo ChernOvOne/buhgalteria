@@ -20,7 +20,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, Image as RLImage, KeepTogether, PageBreak,
+    HRFlowable, Image as RLImage, KeepTogether,
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -260,7 +260,7 @@ def generate_compare_pdf(
     def delta_cell(a_val, b_val, inverse=False):
         if a_val == 0: return "—"
         p = (b_val - a_val) / a_val * 100
-        sign = "▲" if p > 0 else "▼"
+        sign = "(+)" if p > 0 else "(-)"
         is_good = (p > 0 and not inverse) or (p < 0 and inverse)
         col = COL_GOOD if is_good else COL_BAD
         return f"<font color='{col}'>{sign} {abs(p):.1f}%</font>"
@@ -298,8 +298,6 @@ def generate_compare_pdf(
         ("TEXTCOLOR",   (2, 1), (2, -1), rl(COL_B)),
     ]))
     story.append(kpi_t)
-
-    story.append(PageBreak())
     story.append(Paragraph("Визуальное сравнение KPI", h2_sty))
     kpi_png = make_kpi_bar_chart(a['kpi'], b['kpi'], label_a, label_b)
     story.append(RLImage(io.BytesIO(kpi_png), width=16*cm, height=5*cm))
@@ -309,8 +307,6 @@ def generate_compare_pdf(
         story.append(Paragraph("Динамика выручки", h2_sty))
         rev_png = make_revenue_chart(a['chart'], b['chart'], label_a, label_b)
         story.append(RLImage(io.BytesIO(rev_png), width=16*cm, height=6*cm))
-
-    story.append(PageBreak())
     # ── Расходы по категориям
     if cat_compare:
         story.append(Paragraph("Расходы по категориям", h2_sty))
@@ -338,8 +334,6 @@ def generate_compare_pdf(
             ("TEXTCOLOR",   (2, 1), (2, -1), rl(COL_B)),
         ]))
         story.append(cat_t)
-
-    story.append(PageBreak())
     story.append(Paragraph("Платежи VPN", h2_sty))
     pay_data = [
         ["Показатель", "A", "B", "Δ%"],
@@ -402,8 +396,6 @@ def generate_compare_pdf(
         ("TEXTCOLOR",  (2,1),(2,-1), rl(COL_B)),
     ]))
     story.append(other_t)
-
-    story.append(PageBreak())
     story.append(Paragraph("Итоговая оценка", h2_sty))
     checks = [
         ("Доход",        a['kpi']['income'],      b['kpi']['income'],      False),
@@ -417,7 +409,7 @@ def generate_compare_pdf(
     for label, av, bv, inv in checks:
         better = bv < av if inv else bv > av
         worse  = bv > av if inv else bv < av
-        res = "✅ Период B лучше" if better else ("❌ Период B хуже" if worse else "➡️ Без изменений")
+        res = "[+] B лучше" if better else ("[-] B хуже" if worse else "= Без изменений")
         summary_rows.append([label, fmt(av) if isinstance(av, float) else str(av),
                              fmt(bv) if isinstance(bv, float) else str(bv), res])
 
