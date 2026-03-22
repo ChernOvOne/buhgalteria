@@ -20,10 +20,27 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, Image as RLImage, KeepTogether,
+    HRFlowable, Image as RLImage, KeepTogether, PageBreak,
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+
+import re as _re
+
+def _strip_emoji(text: str) -> str:
+    """Убирает emoji которые DejaVu не поддерживает."""
+    emoji_pattern = _re.compile(
+        "[😀-🙏"
+        "🌀-🗿"
+        "🚀-🧿"
+        "☀-⛿"
+        "✀-➿"
+        "🨀-🪟"
+        "✅❌➡️▲▼💸🔄💼💚❤️💰📊📢💳👤🏦📅]+",
+        flags=_re.UNICODE
+    )
+    return emoji_pattern.sub('', text).strip()
+
 
 # ── Шрифты ───────────────────────────────────────────────────────────────────
 FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "fonts")
@@ -250,16 +267,16 @@ def generate_compare_pdf(
 
     kpi_data = [
         ["Показатель", f"A: {a['meta']['date_from'][:7]}", f"B: {b['meta']['date_from'][:7]}", "Изменение"],
-        ["💚 Доход",
+        ["Доход",
          fmt(a['kpi']['income']), fmt(b['kpi']['income']),
          Paragraph(delta_cell(a['kpi']['income'], b['kpi']['income']), norm_sty)],
-        ["❤️ Расход",
+        ["Расход",
          fmt(a['kpi']['expense']), fmt(b['kpi']['expense']),
          Paragraph(delta_cell(a['kpi']['expense'], b['kpi']['expense'], inverse=True), norm_sty)],
-        ["💰 Прибыль",
+        ["Прибыль",
          fmt(a['kpi']['profit']), fmt(b['kpi']['profit']),
          Paragraph(delta_cell(a['kpi']['profit'], b['kpi']['profit']), norm_sty)],
-        ["📈 Среднее/день",
+        ["Среднее/день",
          fmt(a['kpi']['avg_per_day']), fmt(b['kpi']['avg_per_day']),
          Paragraph(delta_cell(a['kpi']['avg_per_day'], b['kpi']['avg_per_day']), norm_sty)],
     ]
@@ -282,7 +299,7 @@ def generate_compare_pdf(
     ]))
     story.append(kpi_t)
 
-    # ── График KPI
+    story.append(PageBreak())
     story.append(Paragraph("Визуальное сравнение KPI", h2_sty))
     kpi_png = make_kpi_bar_chart(a['kpi'], b['kpi'], label_a, label_b)
     story.append(RLImage(io.BytesIO(kpi_png), width=16*cm, height=5*cm))
@@ -293,6 +310,7 @@ def generate_compare_pdf(
         rev_png = make_revenue_chart(a['chart'], b['chart'], label_a, label_b)
         story.append(RLImage(io.BytesIO(rev_png), width=16*cm, height=6*cm))
 
+    story.append(PageBreak())
     # ── Расходы по категориям
     if cat_compare:
         story.append(Paragraph("Расходы по категориям", h2_sty))
@@ -321,7 +339,7 @@ def generate_compare_pdf(
         ]))
         story.append(cat_t)
 
-    # ── Платежи
+    story.append(PageBreak())
     story.append(Paragraph("Платежи VPN", h2_sty))
     pay_data = [
         ["Показатель", "A", "B", "Δ%"],
@@ -355,19 +373,18 @@ def generate_compare_pdf(
     ]))
     story.append(pay_t)
 
-    # ── Инкас + Реклама
     story.append(Paragraph("Инкас и Реклама", h2_sty))
     other_data = [
         ["Показатель",         "A",                             "B",                             "Δ%"],
-        ["💸 Дивиденды",       fmt(a['inkas']['total_dvd']),    fmt(b['inkas']['total_dvd']),
+        ["Дивиденды",       fmt(a['inkas']['total_dvd']),    fmt(b['inkas']['total_dvd']),
          pct_str(a['inkas']['total_dvd'], b['inkas']['total_dvd'])],
-        ["🔄 Возврат инвест.", fmt(a['inkas']['total_ret']),    fmt(b['inkas']['total_ret']),
+        ["Возврат инвест.", fmt(a['inkas']['total_ret']),    fmt(b['inkas']['total_ret']),
          pct_str(a['inkas']['total_ret'], b['inkas']['total_ret'])],
-        ["📢 Реклама spend",   fmt(a['ads']['spend']),          fmt(b['ads']['spend']),
+        ["Реклама (потрачено)",   fmt(a['ads']['spend']),          fmt(b['ads']['spend']),
          pct_str(a['ads']['spend'], b['ads']['spend'])],
-        ["👥 Привлечено ПДП", str(a['ads']['subscribers']),   str(b['ads']['subscribers']),
+        ["Привлечено ПДП", str(a['ads']['subscribers']),   str(b['ads']['subscribers']),
          pct_str(a['ads']['subscribers'], b['ads']['subscribers'])],
-        ["💰 Цена ПДП",        fmt(a['ads']['cost_per_sub']) if a['ads']['cost_per_sub'] else "—",
+        ["Цена 1 ПДП",        fmt(a['ads']['cost_per_sub']) if a['ads']['cost_per_sub'] else "—",
                                fmt(b['ads']['cost_per_sub']) if b['ads']['cost_per_sub'] else "—", "—"],
     ]
     other_t = Table(other_data, colWidths=[7*cm, 3*cm, 3*cm, 4*cm])
@@ -386,15 +403,15 @@ def generate_compare_pdf(
     ]))
     story.append(other_t)
 
-    # ── Итог
+    story.append(PageBreak())
     story.append(Paragraph("Итоговая оценка", h2_sty))
     checks = [
         ("Доход",        a['kpi']['income'],      b['kpi']['income'],      False),
         ("Расход",       a['kpi']['expense'],      b['kpi']['expense'],     True),
         ("Прибыль",      a['kpi']['profit'],       b['kpi']['profit'],      False),
         ("Платежи VPN",  a['payments']['amount'],  b['payments']['amount'], False),
-        ("Реклама eff.", a['ads']['cost_per_sub'] or 999999,
-                         b['ads']['cost_per_sub'] or 999999,                True),
+        ("Реклама eff.", a['ads']['cost_per_sub'] or 0,
+                         b['ads']['cost_per_sub'] or 0,                     True),
     ]
     summary_rows = [["Показатель", "A", "B", "Результат"]]
     for label, av, bv, inv in checks:

@@ -3,7 +3,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -132,6 +132,7 @@ def generate_pdf_report(
         story.append(tbl(rows, [5*cm, 4*cm, 4.5*cm, 3.5*cm]))
 
     if transactions:
+        story.append(PageBreak())
         story.append(Paragraph("Транзакции", h2_sty))
         rows = [["Дата","Тип","Категория","Описание","Сумма"]]
         for t in transactions[:200]:

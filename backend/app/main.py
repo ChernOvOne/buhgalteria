@@ -50,6 +50,17 @@ async def lifespan(app: FastAPI):
         """))
         await conn.run_sync(Base.metadata.create_all)
 
+        # Миграции — добавляем новые колонки если их нет
+        for sql in [
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS budget_source VARCHAR(32) DEFAULT 'account'",
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS investor_partner_id VARCHAR REFERENCES partners(id)",
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS transaction_id VARCHAR REFERENCES transactions(id)",
+        ]:
+            try:
+                await conn.execute(text(sql))
+            except Exception:
+                pass
+
     # Создаём папку для загрузок
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 

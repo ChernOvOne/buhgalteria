@@ -322,6 +322,9 @@ class AdCampaignOut(BaseModel):
     screenshot_url: Optional[str]
     cost_per_sub: Optional[float] = None
     notes: Optional[str]
+    budget_source: Optional[str] = "account"
+    investor_partner_id: Optional[str] = None
+    transaction_id: Optional[str] = None
     created_at: datetime
 
     class Config:
