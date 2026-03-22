@@ -21,15 +21,22 @@ from app.api.other import (
 
 from sqlalchemy import text
 
+async def create_enum_if_not_exists(conn, name: str, values: list):
+    exists = await conn.execute(
+        text("SELECT 1 FROM pg_type WHERE typname = :name"),
+        {"name": name}
+    )
+    if not exists.scalar():
+        vals = ", ".join(f"'{v}'" for v in values)
+        await conn.execute(text(f"CREATE TYPE {name} AS ENUM ({vals})"))
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
-        # Создаём enum типы вручную с IF NOT EXISTS
-        await conn.execute(text("CREATE TYPE IF NOT EXISTS userrole AS ENUM ('admin', 'editor', 'investor', 'partner')"))
-        await conn.execute(text("CREATE TYPE IF NOT EXISTS transactiontype AS ENUM ('income', 'expense')"))
-        await conn.execute(text("CREATE TYPE IF NOT EXISTS inkastype AS ENUM ('dividend', 'return_inv', 'investment')"))
-        await conn.execute(text("CREATE TYPE IF NOT EXISTS serverstatus AS ENUM ('active', 'warning', 'expired', 'inactive')"))
-        # Создаём таблицы
+        await create_enum_if_not_exists(conn, "userrole", ["admin", "editor", "investor", "partner"])
+        await create_enum_if_not_exists(conn, "transactiontype", ["income", "expense"])
+        await create_enum_if_not_exists(conn, "inkastype", ["dividend", "return_inv", "investment"])
+        await create_enum_if_not_exists(conn, "serverstatus", ["active", "warning", "expired", "inactive"])
         await conn.run_sync(Base.metadata.create_all)
 
     # Создаём папку для загрузок
