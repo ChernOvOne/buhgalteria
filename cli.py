@@ -60,10 +60,13 @@ def restart():
 
 def update():
     print(c(BLUE, "→") + " Обновление из репозитория...")
-    run("git pull --rebase")
+    # Сохраняем локальные изменения (например .env)
+    run("git stash", check=False)
+    run("git pull origin main")
+    # Восстанавливаем локальные изменения
+    run("git stash pop", check=False)
     print(c(BLUE, "→") + " Пересборка и перезапуск сервисов...")
     run(f"{COMPOSE} up -d --build --no-deps backend frontend")
-    # Бот пересобираем только если запущен
     result = run(f"{COMPOSE} ps bot", check=False, capture=True)
     if result and "running" in (result.stdout or "").lower():
         run(f"{COMPOSE} --profile bot up -d --build --no-deps bot")
