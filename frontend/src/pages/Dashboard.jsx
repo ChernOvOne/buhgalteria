@@ -369,11 +369,11 @@ export default function Dashboard() {
           {/* Servers */}
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs font-medium text-gray-500 mb-3">Серверы — оплаты скоро</div>
-            {data.servers_warning.length === 0 ? (
+            {(data.servers_warning?.length ?? 0) === 0 ? (
               <div className="text-xs text-gray-400 text-center py-6">Все платежи в порядке</div>
             ) : (
               <div className="space-y-2">
-                {data.servers_warning.map(s => (
+                {(data.servers_warning || []).map(s => (
                   <div key={s.id} className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       s.days_until_payment < 0 ? 'bg-danger-600' :
@@ -401,16 +401,16 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="bg-gray-50 rounded-lg p-2.5">
                 <div className="text-xs text-gray-400 mb-1">Потрачено</div>
-                <div className="text-sm font-medium">{fmt(data.ad_stats.total_spent)}</div>
+                <div className="text-sm font-medium">{fmt(data.ad_stats?.total_spent || 0)}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-2.5">
                 <div className="text-xs text-gray-400 mb-1">Привлечено ПДП</div>
-                <div className="text-sm font-medium">{data.ad_stats.total_subscribers || '—'}</div>
+                <div className="text-sm font-medium">{data.ad_stats?.total_subscribers || '—'}</div>
               </div>
             </div>
             <div className="text-xs text-gray-400 mb-1">Цена 1 подписчика</div>
             <div className="text-lg font-medium text-success-600">
-              {data.ad_stats.cost_per_sub ? fmt(data.ad_stats.cost_per_sub) : '—'}
+              {data.ad_stats?.cost_per_sub ? fmt(data.ad_stats.cost_per_sub) : '—'}
             </div>
           </div>
         </div>

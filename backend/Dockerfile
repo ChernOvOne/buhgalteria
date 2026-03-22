@@ -52,6 +52,9 @@ RUN pip install --no-cache-dir --timeout 120 \
     celery==5.4.0
 
 RUN pip install --no-cache-dir --timeout 120 \
+    matplotlib==3.9.0
+
+RUN pip install --no-cache-dir --timeout 120 \
     aiogram==3.6.0
 
 COPY . .

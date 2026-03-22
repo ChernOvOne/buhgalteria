@@ -263,47 +263,118 @@ async def send_compare_to_telegram(
         f"💸 Инкас:   A {fmt(a_data['inkas']['total_dvd'] + a_data['inkas']['total_ret'])} → B <b>{fmt(b_data['inkas']['total_dvd'] + b_data['inkas']['total_ret'])}</b>"
     )
 
-    # Генерируем PDF
-    from app.services.report_service import generate_pdf_report
-    import io
+    # Дельты для общего PDF
+    def _d(av, bv):
+        if av == 0:
+            return {"abs": round(bv,2), "pct": None, "direction": "up" if bv>0 else "neutral"}
+        diff = bv - av
+        pct = round(diff/av*100, 1)
+        return {"abs": round(diff,2), "pct": pct, "direction": "up" if diff>0 else ("down" if diff<0 else "neutral")}
 
-    def build_pdf(d, label, period_label):
-        return generate_pdf_report(
-            company_name=f"{company} — {label}",
-            period_label=period_label,
-            kpi=d["kpi"],
-            transactions=[],
-            expense_by_category=d["expense_by_cat"],
-            partners_summary=[],
-        )
+    deltas = {k: _d(a_data["kpi"][k], b_data["kpi"][k])
+              for k in ["income","expense","profit","avg_per_day"]}
 
-    pdf_a = build_pdf(a_data, "Период A",
-                      f"{req.a_from.strftime('%d.%m.%Y')} — {req.a_to.strftime('%d.%m.%Y')}")
-    pdf_b = build_pdf(b_data, "Период B",
-                      f"{req.b_from.strftime('%d.%m.%Y')} — {req.b_to.strftime('%d.%m.%Y')}")
+    all_cats = list({c["name"] for c in a_data["expense_by_cat"]} |
+                   {c["name"] for c in b_data["expense_by_cat"]})
+    a_cm = {c["name"]: c for c in a_data["expense_by_cat"]}
+    b_cm = {c["name"]: c for c in b_data["expense_by_cat"]}
+    cat_compare = sorted([
+        {"name": n, "color": a_cm.get(n, b_cm.get(n, {})).get("color","#888780"),
+         "a": a_cm.get(n,{}).get("amount",0), "b": b_cm.get(n,{}).get("amount",0),
+         "delta": _d(a_cm.get(n,{}).get("amount",0), b_cm.get(n,{}).get("amount",0))}
+        for n in all_cats
+    ], key=lambda x: max(x["a"],x["b"]), reverse=True)
 
-    # Объединяем PDF (просто оба файла в одном сообщении)
+    # Генерируем общий сравнительный PDF
+    from app.services.compare_pdf import generate_compare_pdf
+    label_a = f"A: {req.a_from} — {req.a_to}"
+    label_b = f"B: {req.b_from} — {req.b_to}"
+    pdf_bytes = generate_compare_pdf(
+        company=company, a=a_data, b=b_data,
+        deltas=deltas, cat_compare=cat_compare,
+        label_a=label_a, label_b=label_b,
+    )
+
     import httpx
     bot_token = tok.value
     channel_id = ch.value
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        # Сначала текст
+    async with httpx.AsyncClient(timeout=60) as client:
+        # Текстовая сводка
         await client.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
             json={"chat_id": channel_id, "text": text, "parse_mode": "HTML"},
         )
-        # PDF A
+        # Общий PDF
         await client.post(
             f"https://api.telegram.org/bot{bot_token}/sendDocument",
-            data={"chat_id": channel_id, "caption": f"📄 Период A: {req.a_from} — {req.a_to}"},
-            files={"document": (f"period_a_{req.a_from}.pdf", pdf_a, "application/pdf")},
-        )
-        # PDF B
-        await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendDocument",
-            data={"chat_id": channel_id, "caption": f"📄 Период B: {req.b_from} — {req.b_to}"},
-            files={"document": (f"period_b_{req.b_from}.pdf", pdf_b, "application/pdf")},
+            data={"chat_id": channel_id,
+                  "caption": f"📊 Сравнительный отчёт · {company}\n{label_a} vs {label_b}"},
+            files={"document": (f"compare_{req.a_from}_{req.b_from}.pdf", pdf_bytes, "application/pdf")},
         )
 
     return {"ok": True}
+
+
+@router.post("/pdf")
+async def download_compare_pdf(
+    req: ComparePeriod,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Генерирует и отдаёт общий сравнительный PDF."""
+    from fastapi.responses import Response
+
+    a_data = await _fetch_period_data(db, req.a_from, req.a_to)
+    b_data = await _fetch_period_data(db, req.b_from, req.b_to)
+
+    company_r = await db.execute(
+        select(AppSettings).where(AppSettings.key == "company_name")
+    )
+    company_row = company_r.scalar_one_or_none()
+    company = company_row.value if company_row else "Бухгалтерия"
+
+    # Дельты
+    def _delta(a_val, b_val):
+        if a_val == 0:
+            return {"abs": round(b_val, 2), "pct": None, "direction": "up" if b_val > 0 else "neutral"}
+        diff = b_val - a_val
+        pct  = round(diff / a_val * 100, 1)
+        return {"abs": round(diff, 2), "pct": pct,
+                "direction": "up" if diff > 0 else ("down" if diff < 0 else "neutral")}
+
+    deltas = {k: _delta(a_data["kpi"][k], b_data["kpi"][k])
+              for k in ["income", "expense", "profit", "avg_per_day"]}
+
+    all_cats = list({c["name"] for c in a_data["expense_by_cat"]} |
+                   {c["name"] for c in b_data["expense_by_cat"]})
+    a_cat_map = {c["name"]: c for c in a_data["expense_by_cat"]}
+    b_cat_map = {c["name"]: c for c in b_data["expense_by_cat"]}
+    cat_compare = []
+    for name in all_cats:
+        a_amt = a_cat_map.get(name, {}).get("amount", 0)
+        b_amt = b_cat_map.get(name, {}).get("amount", 0)
+        color = a_cat_map.get(name, b_cat_map.get(name, {})).get("color", "#888780")
+        cat_compare.append({"name": name, "color": color, "a": a_amt, "b": b_amt,
+                             "delta": _delta(a_amt, b_amt)})
+    cat_compare.sort(key=lambda x: max(x["a"], x["b"]), reverse=True)
+
+    from app.services.compare_pdf import generate_compare_pdf
+    label_a = f"A: {req.a_from} — {req.a_to}"
+    label_b = f"B: {req.b_from} — {req.b_to}"
+
+    pdf_bytes = generate_compare_pdf(
+        company=company,
+        a=a_data, b=b_data,
+        deltas=deltas,
+        cat_compare=cat_compare,
+        label_a=label_a,
+        label_b=label_b,
+    )
+
+    filename = f"compare_{req.a_from}_{req.b_from}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

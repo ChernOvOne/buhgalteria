@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { adsAPI, partnersAPI } from '@/api'
 import { fmt, fmtDate, today, monthStart } from '@/utils'
-import { Button, Input, Modal, Table, Tr, Td, Badge, Empty, Spinner, Textarea } from '@/components/ui'
+import { Button, Input, Select, Modal, Table, Tr, Td, Badge, Empty, Spinner, Textarea } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
 import { Plus, Edit2, Trash2, ExternalLink, TrendingUp } from 'lucide-react'
 import { useAuthStore } from '@/store'

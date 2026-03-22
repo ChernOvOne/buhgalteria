@@ -163,6 +163,7 @@ export default function ComparePage() {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [comparePdfLoading, setComparePdfLoading] = useState(false)
 
   const handleCompare = useCallback(async () => {
     if (!aFrom || !aTo || !bFrom || !bTo) {
@@ -194,9 +195,20 @@ export default function ComparePage() {
     try {
       const [df, dt] = period === 'a' ? [aFrom, aTo] : [bFrom, bTo]
       const res = await reportsAPI.pdf({ date_from: df, date_to: dt, format: 'pdf' })
-      downloadBlob(res.data, `compare_${period}_${df}_${dt}.pdf`)
+      downloadBlob(res.data, `report_${period}_${df}_${dt}.pdf`)
     } catch { toast.error('Ошибка генерации PDF') }
     finally { setPdfLoading(false) }
+  }
+
+  const handleComparePdf = async () => {
+    if (!aFrom || !aTo || !bFrom || !bTo) { toast.error('Сначала выполните сравнение'); return }
+    setComparePdfLoading(true)
+    try {
+      const res = await compareAPI.pdf({ a_from: aFrom, a_to: aTo, b_from: bFrom, b_to: bTo })
+      downloadBlob(res.data, `compare_${aFrom}_vs_${bFrom}.pdf`)
+      toast.success('PDF скачан')
+    } catch { toast.error('Ошибка генерации PDF') }
+    finally { setComparePdfLoading(false) }
   }
 
   // Объединяем графики для recharts
@@ -227,18 +239,19 @@ export default function ComparePage() {
   return (
     <div>
       <PageHeader title="Сравнение периодов" subtitle="Сравните любые два временных промежутка">
+        <Button size="sm" onClick={() => handlePdf('a')} loading={pdfLoading} disabled={!aFrom || !aTo}>
+          <FileDown size={13} /> PDF A
+        </Button>
+        <Button size="sm" onClick={() => handlePdf('b')} loading={pdfLoading} disabled={!bFrom || !bTo}>
+          <FileDown size={13} /> PDF B
+        </Button>
+        <Button size="sm" variant="primary" onClick={handleComparePdf} loading={comparePdfLoading}>
+          <FileDown size={13} /> Общий PDF
+        </Button>
         {result && (
-          <>
-            <Button size="sm" onClick={handleSendTelegram} loading={sending}>
-              <Send size={13} /> В Telegram
-            </Button>
-            <Button size="sm" onClick={() => handlePdf('a')} loading={pdfLoading}>
-              <FileDown size={13} /> PDF A
-            </Button>
-            <Button size="sm" onClick={() => handlePdf('b')} loading={pdfLoading}>
-              <FileDown size={13} /> PDF B
-            </Button>
-          </>
+          <Button size="sm" onClick={handleSendTelegram} loading={sending}>
+            <Send size={13} /> В Telegram
+          </Button>
         )}
       </PageHeader>
 

@@ -20,3 +20,4 @@ python-dateutil==2.9.0
 babel==2.15.0
 pillow==10.3.0
 aiogram==3.6.0
+matplotlib==3.9.0

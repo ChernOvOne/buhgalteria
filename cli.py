@@ -60,16 +60,17 @@ def restart():
 
 def update():
     print(c(BLUE, "→") + " Обновление из репозитория...")
-    # Сохраняем локальные изменения (например .env)
     run("git stash", check=False)
     run("git pull origin main")
-    # Восстанавливаем локальные изменения
     run("git stash pop", check=False)
-    print(c(BLUE, "→") + " Пересборка и перезапуск сервисов...")
+    print(c(BLUE, "→") + " Пересборка backend и frontend...")
     run(f"{COMPOSE} up -d --build --no-deps backend frontend")
-    result = run(f"{COMPOSE} ps bot", check=False, capture=True)
-    if result and "running" in (result.stdout or "").lower():
+    # Всегда пересобираем бота если токен задан
+    token_val = _get_env("TG_BOT_TOKEN", "")
+    if token_val:
+        print(c(BLUE, "→") + " Пересборка Telegram бота...")
         run(f"{COMPOSE} --profile bot up -d --build --no-deps bot")
+        print(c(GREEN, "✓") + " Telegram бот обновлён")
     print(c(GREEN, "✓") + " Обновление завершено")
 
 def logs(service=None):

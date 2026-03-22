@@ -156,5 +156,6 @@ export const notifChannelsAPI = {
 // ── Compare ───────────────────────────────────────────────────────────────────
 export const compareAPI = {
   compare: (data) => api.post('/compare/', data),
+  pdf: (data) => api.post('/compare/pdf', data, { responseType: 'blob' }),
   sendTelegram: (data) => api.post('/compare/send-telegram', data),
 }
