@@ -287,3 +287,55 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="audit_logs")
+
+
+# ── Payment (входящие платежи через webhook) ──────────────────────────────────
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    # Идентификация
+    external_id = Column(String(128), nullable=True, index=True)   # ID из вашей системы
+    api_key_id  = Column(String, ForeignKey("api_keys.id"), nullable=True)
+
+    # Финансы
+    amount   = Column(Float, nullable=False)
+    currency = Column(String(8), default="RUB")
+
+    # Клиент
+    customer_email = Column(String(128), nullable=True)
+    customer_id    = Column(String(128), nullable=True)
+    customer_name  = Column(String(128), nullable=True)
+
+    # Подписка VPN
+    plan          = Column(String(64), nullable=True)   # "3 месяц VPN"
+    plan_tag      = Column(String(32), nullable=True)   # "3m"
+    sub_start     = Column(Date, nullable=True)
+    sub_end       = Column(Date, nullable=True)
+
+    # Мета
+    description = Column(Text, nullable=True)
+    raw_data    = Column(JSON, nullable=True)      # оригинальный JSON запроса
+    source      = Column(String(64), nullable=True) # имя источника / бота
+
+    # Автоматически создаётся транзакция дохода
+    transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)
+
+    date       = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    api_key     = relationship("ApiKey",     foreign_keys=[api_key_id])
+    transaction = relationship("Transaction", foreign_keys=[transaction_id])
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    name        = Column(String(64), nullable=False)   # "Бот VPN 1"
+    key         = Column(String(64), unique=True, nullable=False)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    last_used   = Column(DateTime(timezone=True), nullable=True)
+    request_count = Column(Integer, default=0)

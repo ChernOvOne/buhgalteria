@@ -15,6 +15,7 @@ import AdsPage       from '@/pages/Ads'
 import InkasPage     from '@/pages/Inkas'
 import ReportsPage   from '@/pages/Reports'
 import SettingsPage  from '@/pages/Settings'
+import PaymentsPage  from '@/pages/Payments'
 
 function AppShell() {
   return (
@@ -28,6 +29,7 @@ function AppShell() {
           <Route path="/servers"  element={<ServersPage />} />
           <Route path="/partners" element={<PartnersPage />} />
           <Route path="/inkas"    element={<InkasPage />} />
+          <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/reports"  element={<ReportsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*"         element={<Navigate to="/" replace />} />

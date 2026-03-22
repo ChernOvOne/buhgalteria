@@ -5,13 +5,14 @@ import { clsx } from '@/utils'
 import {
   LayoutDashboard, TrendingUp, TrendingDown, Megaphone,
   Server, Users, ArrowLeftRight, FileText, Settings,
-  LogOut, Menu, X,
+  LogOut, Menu, X, CreditCard,
 } from 'lucide-react'
 
 const NAV = [
   { to: '/',            icon: LayoutDashboard, label: 'Дашборд'  },
   { to: '/income',      icon: TrendingUp,      label: 'Доходы'   },
   { to: '/expenses',    icon: TrendingDown,    label: 'Расходы'  },
+  { to: '/payments',    icon: CreditCard,      label: 'Платежи'  },
   { to: '/ads',         icon: Megaphone,       label: 'Реклама'  },
   { to: '/servers',     icon: Server,          label: 'Сервера'  },
   { to: '/partners',    icon: Users,           label: 'Партнёры' },

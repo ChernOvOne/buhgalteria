@@ -132,3 +132,14 @@ export const statsAPI = {
   list: (year) => api.get('/monthly-stats/', { params: { year } }),
   upsert: (year, month, data) => api.put(`/monthly-stats/${year}/${month}`, data),
 }
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+export const paymentsAPI = {
+  list: (params) => api.get('/payments/', { params }),
+  get: (id) => api.get(`/payments/${id}`),
+  delete: (id) => api.delete(`/payments/${id}`),
+  stats: (params) => api.get('/payments/stats/summary', { params }),
+  listKeys: () => api.get('/payments/keys/list'),
+  createKey: (data) => api.post('/payments/keys', data),
+  deleteKey: (id) => api.delete(`/payments/keys/${id}`),
+}

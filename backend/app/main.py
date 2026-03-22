@@ -13,6 +13,7 @@ from app.api.categories import router as categories_router
 from app.api.partners import router as partners_router
 from app.api.reports import router as reports_router
 from app.api.settings import router as settings_router
+from app.api.payments import router as payments_router
 from app.api.other import (
     servers_router, ads_router, recurring_router,
     dashboard_router, milestones_router, stats_router,
@@ -98,6 +99,7 @@ app.include_router(categories_router, prefix="/api")
 app.include_router(partners_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(payments_router, prefix="/api")
 app.include_router(servers_router, prefix="/api")
 app.include_router(ads_router, prefix="/api")
 app.include_router(recurring_router, prefix="/api")
