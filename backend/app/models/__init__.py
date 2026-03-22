@@ -50,7 +50,7 @@ class User(Base):
     email = Column(String(128), unique=True, nullable=True)
     hashed_password = Column(String(256), nullable=False)
     full_name = Column(String(128), nullable=True)
-    role = Column(SAEnum(UserRole), default=UserRole.editor, nullable=False)
+    role = Column(SAEnum(UserRole, create_type=False), default=UserRole.editor, nullable=False)
     tg_id = Column(String(32), nullable=True)
     tg_username = Column(String(64), nullable=True)
     is_active = Column(Boolean, default=True)
@@ -97,7 +97,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    type = Column(SAEnum(TransactionType), nullable=False)
+    type = Column(SAEnum(TransactionType, create_type=False), nullable=False)
     amount = Column(Float, nullable=False)
     date = Column(Date, nullable=False, index=True)
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
@@ -147,7 +147,7 @@ class InkasRecord(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     partner_id = Column(String, ForeignKey("partners.id"), nullable=False)
-    type = Column(SAEnum(InkasType), nullable=False)
+    type = Column(SAEnum(InkasType, create_type=False), nullable=False)
     amount = Column(Float, nullable=False)
     date = Column(Date, nullable=False)
     month_label = Column(String(32), nullable=True)  # "МАРТ 2026"
@@ -174,7 +174,7 @@ class Server(Base):
     currency = Column(String(8), default="RUB")
     payment_day = Column(Integer, nullable=True)      # число месяца
     next_payment_date = Column(Date, nullable=True)
-    status = Column(SAEnum(ServerStatus), default=ServerStatus.active)
+    status = Column(SAEnum(ServerStatus, create_type=False), default=ServerStatus.active)
     notify_days_before = Column(Integer, default=5)   # за сколько дней уведомлять
     is_active = Column(Boolean, default=True)
     notes = Column(Text, nullable=True)
