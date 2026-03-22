@@ -19,10 +19,17 @@ from app.api.other import (
 )
 
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Создаём таблицы при старте
     async with engine.begin() as conn:
+        # Создаём enum типы вручную с IF NOT EXISTS
+        await conn.execute(text("CREATE TYPE IF NOT EXISTS userrole AS ENUM ('admin', 'editor', 'investor', 'partner')"))
+        await conn.execute(text("CREATE TYPE IF NOT EXISTS transactiontype AS ENUM ('income', 'expense')"))
+        await conn.execute(text("CREATE TYPE IF NOT EXISTS inkastype AS ENUM ('dividend', 'return_inv', 'investment')"))
+        await conn.execute(text("CREATE TYPE IF NOT EXISTS serverstatus AS ENUM ('active', 'warning', 'expired', 'inactive')"))
+        # Создаём таблицы
         await conn.run_sync(Base.metadata.create_all)
 
     # Создаём папку для загрузок
