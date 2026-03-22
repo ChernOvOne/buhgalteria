@@ -143,3 +143,12 @@ export const paymentsAPI = {
   createKey: (data) => api.post('/payments/keys', data),
   deleteKey: (id) => api.delete(`/payments/keys/${id}`),
 }
+
+// ── Notification channels ─────────────────────────────────────────────────────
+export const notifChannelsAPI = {
+  list: () => api.get('/notification-channels/'),
+  create: (data) => api.post('/notification-channels/', data),
+  update: (id, data) => api.patch(`/notification-channels/${id}`, data),
+  delete: (id) => api.delete(`/notification-channels/${id}`),
+  test: (id) => api.post(`/notification-channels/test/${id}`),
+}

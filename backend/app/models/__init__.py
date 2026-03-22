@@ -189,17 +189,22 @@ class AdCampaign(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     date = Column(Date, nullable=False)
-    channel_name = Column(String(128), nullable=True)   # "Скачать тик ток мод | Redbic"
-    channel_url = Column(Text, nullable=True)            # https://t.me/redbictt1
-    format = Column(String(64), nullable=True)           # "2/48", "1/24", "24/24"
+    channel_name = Column(String(128), nullable=True)
+    channel_url = Column(Text, nullable=True)
+    format = Column(String(64), nullable=True)
     amount = Column(Float, nullable=False)
-    subscribers_gained = Column(Integer, nullable=True)  # приход ПДП
+    subscribers_gained = Column(Integer, nullable=True)
     screenshot_url = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    # Источник бюджета: account / investment / stats_only
+    budget_source = Column(String(32), default="account", nullable=True)
+    investor_partner_id = Column(String, ForeignKey("partners.id"), nullable=True)
+    transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)
     created_by = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     creator = relationship("User", foreign_keys=[created_by])
+    investor_partner = relationship("Partner", foreign_keys=[investor_partner_id])
 
 
 # ── Recurring Payment ─────────────────────────────────────────────────────────
@@ -328,6 +333,25 @@ class Payment(Base):
     api_key     = relationship("ApiKey",     foreign_keys=[api_key_id])
     transaction = relationship("Transaction", foreign_keys=[transaction_id])
 
+
+
+# ── Notification Channel ──────────────────────────────────────────────────────
+
+class NotificationChannel(Base):
+    __tablename__ = "notification_channels"
+
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    name        = Column(String(64), nullable=False)    # "Основной канал"
+    chat_id     = Column(String(64), nullable=False)    # "-100123456789"
+    is_active   = Column(Boolean, default=True)
+    # Какие уведомления слать
+    notify_income    = Column(Boolean, default=True)
+    notify_expense   = Column(Boolean, default=True)
+    notify_inkas     = Column(Boolean, default=True)
+    notify_payment   = Column(Boolean, default=True)
+    notify_ad        = Column(Boolean, default=False)
+    notify_server    = Column(Boolean, default=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
 class ApiKey(Base):
     __tablename__ = "api_keys"

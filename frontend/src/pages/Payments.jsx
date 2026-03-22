@@ -104,19 +104,21 @@ export default function PaymentsPage() {
   const [dateFrom, setDateFrom] = useState(monthStart())
   const [dateTo, setDateTo]     = useState(today())
   const [search, setSearch]     = useState('')
+  const [subStatus, setSubStatus] = useState('')
+  const [expiringDays, setExpiringDays] = useState(3)
   const { isAdmin } = useAuthStore()
 
   const loadPayments = useCallback(async () => {
     setLoading(true)
     try {
       const [pRes, sRes] = await Promise.all([
-        paymentsAPI.list({ date_from: dateFrom, date_to: dateTo, search: search || undefined }),
+        paymentsAPI.list({ date_from: dateFrom, date_to: dateTo, search: search || undefined, subscription_status: subStatus || undefined, expiring_days: expiringDays }),
         paymentsAPI.stats({ date_from: dateFrom, date_to: dateTo }),
       ])
       setPayments(pRes.data)
       setStats(sRes.data)
     } finally { setLoading(false) }
-  }, [dateFrom, dateTo, search])
+  }, [dateFrom, dateTo, search, subStatus, expiringDays])
 
   const loadKeys = useCallback(async () => {
     if (isAdmin()) {
@@ -217,10 +219,39 @@ export default function PaymentsPage() {
           )}
 
           {/* Filters */}
-          <div className="flex gap-2 px-3 md:px-4 pb-3 flex-wrap">
+          <div className="flex gap-2 px-3 md:px-4 pb-2 flex-wrap items-end">
             <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
             <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="w-36" />
-            <Input placeholder="Поиск по email, ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-52" />
+            <Input placeholder="Поиск email, ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-48" />
+          </div>
+          <div className="flex gap-1.5 px-3 md:px-4 pb-3 flex-wrap">
+            {[
+              { label: 'Все',             value: '' },
+              { label: '✅ Активные',     value: 'active' },
+              { label: '⚠️ Истекают 3д',  value: 'expiring_soon' },
+              { label: '❌ Истекли',      value: 'expired' },
+              { label: '— Без подписки', value: 'no_sub' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setSubStatus(opt.value)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                  subStatus === opt.value
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+            {subStatus === 'expiring_soon' && (
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-xs text-gray-400">Через</span>
+                {[3, 7, 14].map(d => (
+                  <button key={d} onClick={() => setExpiringDays(d)}
+                    className={`px-2 py-0.5 rounded-full text-xs ${expiringDays === d ? 'bg-warn-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                    {d}д
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Table */}

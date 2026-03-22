@@ -123,6 +123,26 @@ async def receive_payment(
     db.add(payment)
     await db.commit()
 
+    # Уведомление
+    try:
+        from app.services.notification_service import notify, format_payment
+        from app.models import AppSettings
+        from sqlalchemy import select as _select
+        company_r = await db.execute(_select(AppSettings).where(AppSettings.key == "company_name"))
+        company_row = company_r.scalar_one_or_none()
+        company = company_row.value if company_row else "Бухгалтерия"
+        text = format_payment(
+            amount=payload.amount,
+            plan=payload.plan,
+            customer=payload.customer_name or payload.customer_email or payload.customer_id,
+            source=payload.source or api_key.name,
+            company=company,
+        )
+        import asyncio as _asyncio
+        _asyncio.ensure_future(notify(db, "payment", text))
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "status": "created",
@@ -139,11 +159,14 @@ async def list_payments(
     date_to: Optional[date] = None,
     plan_tag: Optional[str] = None,
     search: Optional[str] = None,
+    subscription_status: Optional[str] = None,  # active|expired|expiring_soon|no_sub
+    expiring_days: int = 3,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
     _ = Depends(get_current_user),
 ):
+    from datetime import timedelta as _td
     q = select(Payment)
     filters = []
     if date_from:
@@ -152,6 +175,17 @@ async def list_payments(
         filters.append(Payment.date <= date_to)
     if plan_tag:
         filters.append(Payment.plan_tag == plan_tag)
+    if subscription_status:
+        _today = date.today()
+        if subscription_status == "active":
+            filters.append(Payment.sub_end >= _today)
+        elif subscription_status == "expired":
+            filters.append(Payment.sub_end < _today)
+        elif subscription_status == "expiring_soon":
+            filters.append(Payment.sub_end >= _today)
+            filters.append(Payment.sub_end <= _today + _td(days=expiring_days))
+        elif subscription_status == "no_sub":
+            filters.append(Payment.sub_end == None)
     if search:
         filters.append(
             Payment.customer_email.ilike(f"%{search}%") |

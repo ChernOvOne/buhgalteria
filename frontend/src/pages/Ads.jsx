@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { adsAPI } from '@/api'
+import { adsAPI, partnersAPI } from '@/api'
 import { fmt, fmtDate, today, monthStart } from '@/utils'
 import { Button, Input, Modal, Table, Tr, Td, Badge, Empty, Spinner, Textarea } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
@@ -10,13 +10,16 @@ import toast from 'react-hot-toast'
 const EMPTY_FORM = {
   date: today(), channel_name: '', channel_url: '',
   format: '', amount: '', subscribers_gained: '', screenshot_url: '', notes: '',
+  budget_source: 'account', investor_partner_id: '',
 }
 
-function AdForm({ initial, onSave, onClose }) {
+function AdForm({ initial, onSave, onClose, partners = [] }) {
   const [form, setForm] = useState(initial ? {
     ...initial,
     amount: initial.amount ?? '',
     subscribers_gained: initial.subscribers_gained ?? '',
+    budget_source: initial.budget_source || 'account',
+    investor_partner_id: initial.investor_partner_id || '',
   } : { ...EMPTY_FORM })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -55,6 +58,50 @@ function AdForm({ initial, onSave, onClose }) {
       </div>
       <Input label="Скриншот (ссылка)" value={form.screenshot_url} onChange={e => set('screenshot_url', e.target.value)} placeholder="https://disk.yandex.ru/..." />
       <Textarea label="Заметки" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
+
+      <div>
+        <label className="text-xs font-medium text-gray-500 mb-2 block">Источник бюджета</label>
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { value: 'account',    label: '💳 Со счёта' },
+            { value: 'investment', label: '💼 Инвестиция партнёра' },
+            { value: 'stats_only', label: '📊 Только статистика' },
+          ].map(opt => (
+            <button key={opt.value} type="button"
+              onClick={() => set('budget_source', opt.value)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                form.budget_source === opt.value
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {form.budget_source === 'investment' && (
+          <Select
+            label="Партнёр-инвестор"
+            value={form.investor_partner_id}
+            onChange={e => set('investor_partner_id', e.target.value)}
+            className="mt-3"
+          >
+            <option value="">— Выберите партнёра —</option>
+            {partners.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </Select>
+        )}
+        {form.budget_source === 'investment' && (
+          <div className="text-xs text-warn-600 mt-1">⚠️ Сумма будет записана как долг перед партнёром</div>
+        )}
+        {form.budget_source === 'account' && (
+          <div className="text-xs text-gray-400 mt-1">Сумма спишется со счёта как расход</div>
+        )}
+        {form.budget_source === 'stats_only' && (
+          <div className="text-xs text-gray-400 mt-1">Только для учёта ROI, ничего не списывается</div>
+        )}
+      </div>
+
       <div className="flex gap-2 justify-end pt-2">
         <Button type="button" variant="ghost" onClick={onClose}>Отмена</Button>
         <Button type="submit" variant="primary" loading={loading}>{initial?.id ? 'Сохранить' : 'Добавить'}</Button>
@@ -68,6 +115,7 @@ export default function AdsPage() {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
+  const [partners, setPartners] = useState([])
   const [filters, setFilters] = useState({ date_from: monthStart(), date_to: today() })
   const { isEditor } = useAuthStore()
 
@@ -83,7 +131,7 @@ export default function AdsPage() {
     } finally { setLoading(false) }
   }, [filters])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); partnersAPI.list().then(r => setPartners(r.data)).catch(() => {}) }, [load])
 
   const handleDelete = async (id) => {
     if (!confirm('Удалить кампанию?')) return
@@ -162,6 +210,15 @@ export default function AdsPage() {
                       )}
                     </div>
                   </Td>
+                  <Td>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      c.budget_source === 'investment' ? 'bg-warn-50 text-warn-600' :
+                      c.budget_source === 'stats_only' ? 'bg-gray-100 text-gray-400' :
+                      'bg-success-50 text-success-600'
+                    }`}>
+                      {c.budget_source === 'investment' ? '💼' : c.budget_source === 'stats_only' ? '📊' : '💳'}
+                    </span>
+                  </Td>
                   <Td className="font-medium">{fmt(c.amount)}</Td>
                   <Td className="font-medium">{c.subscribers_gained?.toLocaleString('ru') || '—'}</Td>
                   <Td>
@@ -170,14 +227,6 @@ export default function AdsPage() {
                         {fmt(c.cost_per_sub)}
                       </span>
                     ) : '—'}
-                  </Td>
-                  <Td>
-                    {c.screenshot_url && (
-                      <a href={c.screenshot_url} target="_blank" rel="noreferrer"
-                        className="text-primary-600 hover:underline text-xs flex items-center gap-1">
-                        <ExternalLink size={11} /> Скрин
-                      </a>
-                    )}
                   </Td>
                   <Td>
                     {isEditor() && (
@@ -195,7 +244,7 @@ export default function AdsPage() {
       </div>
 
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'add' ? 'Новая кампания' : 'Редактировать кампанию'} size="lg">
-        {modal && <AdForm initial={modal === 'add' ? null : modal} onSave={() => { setModal(null); load() }} onClose={() => setModal(null)} />}
+        {modal && <AdForm initial={modal === 'add' ? null : modal} onSave={() => { setModal(null); load() }} onClose={() => setModal(null)} partners={partners} />}
       </Modal>
     </div>
   )

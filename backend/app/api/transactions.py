@@ -12,6 +12,7 @@ from app.models import Transaction, TransactionType, Category, AutoTagRule, Audi
 from app.schemas import TransactionCreate, TransactionUpdate, TransactionOut
 from app.core.dependencies import require_editor, get_current_user
 from app.config import settings
+from app.services.notification_service import notify, format_transaction
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -109,6 +110,32 @@ async def create_transaction(
         new_data={"type": str(t.type), "amount": t.amount, "date": str(t.date)},
     ))
     await db.refresh(t)
+
+    # Уведомление в Telegram (fire-and-forget)
+    if not t.is_historical:
+        from app.models import AppSettings, Category as CatModel
+        from sqlalchemy import select as _select
+        cat_name = None
+        if t.category_id:
+            cat_r = await db.execute(_select(CatModel).where(CatModel.id == t.category_id))
+            cat = cat_r.scalar_one_or_none()
+            cat_name = cat.name if cat else None
+        company_r = await db.execute(_select(AppSettings).where(AppSettings.key == "company_name"))
+        company_row = company_r.scalar_one_or_none()
+        company = company_row.value if company_row else "Бухгалтерия"
+        text = format_transaction(
+            action="create",
+            t_type=str(t.type.value),
+            amount=t.amount,
+            description=t.description,
+            category_name=cat_name,
+            date_str=str(t.date),
+            user_name=current_user.full_name or current_user.username,
+            company=company,
+        )
+        import asyncio as _asyncio
+        _asyncio.ensure_future(notify(db, str(t.type.value), text))
+
     return TransactionOut.model_validate({
         "id": t.id, "type": t.type, "amount": t.amount, "date": t.date,
         "category_id": t.category_id, "category": None,

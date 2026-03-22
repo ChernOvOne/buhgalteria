@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { categoriesAPI, usersAPI, settingsAPI, milestonesAPI } from '@/api'
+import { categoriesAPI, usersAPI, settingsAPI, milestonesAPI, notifChannelsAPI } from '@/api'
 import { fmt, ROLE_LABELS } from '@/utils'
 import { Button, Input, Select, Modal, Table, Tr, Td, Badge, Spinner, Avatar, Textarea } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
@@ -256,6 +256,7 @@ function AppSettingsTab() {
         notify_monthly: r.data.notify_monthly !== 'false',
         notify_server: r.data.notify_server !== 'false',
         notify_anomaly: r.data.notify_anomaly === 'true',
+        tg_allowed_ids: r.data.tg_allowed_ids || '',
       })
       setLoading(false)
     })
@@ -290,6 +291,7 @@ function AppSettingsTab() {
           <div className="grid grid-cols-2 gap-3">
             <Input label="ID канала для отчётов" value={form.tg_channel_id} onChange={e => set('tg_channel_id', e.target.value)} placeholder="-100123456789" />
             <Input label="Ваш Telegram ID" value={form.tg_admin_id} onChange={e => set('tg_admin_id', e.target.value)} placeholder="123456789" />
+          <Input label="Белый список TG ID (через запятую)" value={form.tg_allowed_ids || ''} onChange={e => set('tg_allowed_ids', e.target.value)} placeholder="123456,789012" />
           </div>
         </div>
       </div>
@@ -407,6 +409,115 @@ function AuditTab() {
   )
 }
 
+
+// ── Notifications Tab ─────────────────────────────────────────────────────────
+function NotificationsTab() {
+  const [channels, setChannels] = useState([])
+  const [form, setForm]         = useState({ name: '', chat_id: '', notify_income: true, notify_expense: true, notify_inkas: true, notify_payment: true, notify_ad: false, notify_server: true })
+  const [saving, setSaving]     = useState(false)
+  const [testing, setTesting]   = useState(null)
+  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const load = () => notifChannelsAPI.list().then(r => setChannels(r.data)).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const handleCreate = async (e) => {
+    e.preventDefault(); setSaving(true)
+    try {
+      await notifChannelsAPI.create(form)
+      toast.success('Канал добавлен')
+      setForm({ name: '', chat_id: '', notify_income: true, notify_expense: true, notify_inkas: true, notify_payment: true, notify_ad: false, notify_server: true })
+      load()
+    } catch { toast.error('Ошибка') } finally { setSaving(false) }
+  }
+
+  const handleToggle = async (ch, field) => {
+    await notifChannelsAPI.update(ch.id, { [field]: !ch[field] })
+    load()
+  }
+
+  const handleTest = async (id) => {
+    setTesting(id)
+    try {
+      await notifChannelsAPI.test(id)
+      toast.success('Тестовое сообщение отправлено!')
+    } catch (e) { toast.error(e.response?.data?.detail || 'Ошибка') }
+    finally { setTesting(null) }
+  }
+
+  const NOTIF_LABELS = [
+    ['notify_income',  '💚 Доходы'],
+    ['notify_expense', '❤️ Расходы'],
+    ['notify_inkas',   '💸 Инкас'],
+    ['notify_payment', '💳 Платежи'],
+    ['notify_ad',      '📢 Реклама'],
+    ['notify_server',  '🖥️ Серверы'],
+  ]
+
+  return (
+    <div className="space-y-6">
+      <form onSubmit={handleCreate} className="bg-white border border-gray-100 rounded-xl p-5 space-y-4">
+        <div className="text-sm font-medium mb-1">Добавить канал уведомлений</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Название" value={form.name} onChange={e => setF('name', e.target.value)} placeholder="Основной канал" required />
+          <Input label="Chat ID" value={form.chat_id} onChange={e => setF('chat_id', e.target.value)} placeholder="-100123456789" required />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-2 block">Какие уведомления слать</label>
+          <div className="grid grid-cols-3 gap-2">
+            {NOTIF_LABELS.map(([k, v]) => (
+              <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={!!form[k]} onChange={e => setF(k, e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-400" />
+                {v}
+              </label>
+            ))}
+          </div>
+        </div>
+        <Button type="submit" variant="primary" loading={saving}><Plus size={13} /> Добавить</Button>
+      </form>
+
+      {channels.length > 0 && (
+        <div className="space-y-3">
+          {channels.map(ch => (
+            <div key={ch.id} className={`bg-white border rounded-xl p-4 ${ch.is_active ? 'border-gray-100' : 'border-gray-50 opacity-60'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex-1">
+                  <div className="text-sm font-medium">{ch.name}</div>
+                  <div className="text-xs text-gray-400 font-mono">{ch.chat_id}</div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" loading={testing === ch.id} onClick={() => handleTest(ch.id)}>
+                    Тест
+                  </Button>
+                  <Button size="sm" variant={ch.is_active ? 'ghost' : 'primary'}
+                    onClick={() => notifChannelsAPI.update(ch.id, { is_active: !ch.is_active }).then(load)}>
+                    {ch.is_active ? 'Откл.' : 'Вкл.'}
+                  </Button>
+                  <Button size="sm" variant="danger"
+                    onClick={() => notifChannelsAPI.delete(ch.id).then(load)}>
+                    <Trash2 size={12} />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {NOTIF_LABELS.map(([k, v]) => (
+                  <button key={k} onClick={() => handleToggle(ch, k)}
+                    className={`px-2 py-0.5 rounded-full text-xs transition-all ${
+                      ch[k] ? 'bg-primary-100 text-primary-600 font-medium' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 const TABS = [
   { id: 'categories', label: 'Категории' },
@@ -414,6 +525,7 @@ const TABS = [
   { id: 'milestones', label: 'Цели' },
   { id: 'app',        label: 'Настройки' },
   { id: 'audit',      label: 'Журнал действий' },
+  { id: 'notif',      label: 'Уведомления TG' },
 ]
 
 export default function SettingsPage() {
@@ -451,6 +563,7 @@ export default function SettingsPage() {
         {tab === 'milestones' && <MilestonesTab />}
         {tab === 'app'        && <AppSettingsTab />}
         {tab === 'audit'      && <AuditTab />}
+        {tab === 'notif'      && <NotificationsTab />}
       </div>
     </div>
   )

@@ -3,7 +3,7 @@
 ## Быстрая установка на Ubuntu VPS
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/ChernOvOne/buhgalteria/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/buhgalteria/main/install.sh | sudo bash
 ```
 
 После установки войди: `http://YOUR_DOMAIN` — логин `admin`, пароль `admin123`

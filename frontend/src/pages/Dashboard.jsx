@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { dashboardAPI, reportsAPI, transactionsAPI } from '@/api'
+import { dashboardAPI, reportsAPI, transactionsAPI, paymentsAPI } from '@/api'
 import { fmt, fmtDate, fmtDateShort, downloadBlob, today, monthStart, yearStart } from '@/utils'
 import { KpiCard, Badge, Avatar, ProgressBar, Spinner, Button, Modal, Input } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
@@ -150,8 +150,11 @@ export default function Dashboard() {
   const [dayModal, setDayModal]         = useState(null)
   const [reportLoading, setReportLoading] = useState(false)
 
+  const [vpnStats, setVpnStats] = useState(null)
+
   const load = useCallback(() => {
     dashboardAPI.get().then(r => setData(r.data)).catch(() => toast.error('Ошибка загрузки'))
+    paymentsAPI.stats({}).then(r => setVpnStats(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -274,10 +277,50 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Heatmap */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <div className="text-xs font-medium text-gray-500 mb-3">Тепловая карта дохода — кликни на день чтобы увидеть транзакции</div>
-          <HeatMap data={data.income_chart} onDayClick={date => setDayModal(date)} />
+        {/* Heatmap + VPN stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+          <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-500 mb-3">Тепловая карта дохода — нажми на день</div>
+            <HeatMap data={data.income_chart} onDayClick={date => setDayModal(date)} />
+          </div>
+          <div className="lg:col-span-2 bg-white border border-gray-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-500 mb-3">VPN подписки</div>
+            {vpnStats ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-success-50 rounded-xl p-2.5">
+                    <div className="text-xs text-success-600 mb-0.5">Активных</div>
+                    <div className="text-xl font-semibold text-success-600">{vpnStats.active_subscriptions}</div>
+                  </div>
+                  <div className={`rounded-xl p-2.5 ${vpnStats.expiring_soon > 0 ? 'bg-warn-50' : 'bg-gray-50'}`}>
+                    <div className={`text-xs mb-0.5 ${vpnStats.expiring_soon > 0 ? 'text-warn-600' : 'text-gray-400'}`}>Истекают 3д</div>
+                    <div className={`text-xl font-semibold ${vpnStats.expiring_soon > 0 ? 'text-warn-600' : 'text-gray-500'}`}>{vpnStats.expiring_soon}</div>
+                  </div>
+                </div>
+                {vpnStats.plans && vpnStats.plans.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    <div className="text-xs text-gray-400 mb-1">По тарифам (активные)</div>
+                    {vpnStats.plans.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-primary-400" />
+                          <span className="text-gray-600">{p.plan || p.tag || '—'}</span>
+                        </span>
+                        <span className="font-medium">{p.count} шт</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-2 border-t border-gray-50">
+                  <div className="text-xs text-gray-400">Сегодня: <span className="font-medium text-gray-700">{vpnStats.today_count} платежей · {fmt(vpnStats.today_amount)}</span></div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-300 text-center py-6">
+                Настройте webhook в разделе<br/><a href="/payments" className="text-primary-400 hover:underline">Платежи</a>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Partners + Servers + Ads */}

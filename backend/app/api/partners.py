@@ -10,6 +10,7 @@ from app.schemas import (
     PartnerCreate, PartnerUpdate, PartnerOut, PartnerDetail, PartnerStats,
     InkasRecordCreate, InkasRecordOut,
 )
+from app.services.notification_service import notify, format_inkas
 from app.core.dependencies import require_admin, require_editor, get_current_user
 
 router = APIRouter(prefix="/partners", tags=["partners"])
@@ -164,6 +165,30 @@ async def create_inkas(
     db.add(record)
     await db.flush()
     await db.refresh(record)
+
+    # Уведомление
+    try:
+        from app.models import AppSettings
+        from sqlalchemy import select as _select
+        company_r = await db.execute(_select(AppSettings).where(AppSettings.key == "company_name"))
+        company_row = company_r.scalar_one_or_none()
+        company = company_row.value if company_row else "Бухгалтерия"
+        partner_r = await db.execute(_select(Partner).where(Partner.id == data.partner_id))
+        partner = partner_r.scalar_one_or_none()
+        text = format_inkas(
+            inkas_type=str(data.type.value),
+            amount=data.amount,
+            partner_name=partner.name if partner else "?",
+            month_label=data.month_label,
+            description=data.description,
+            user_name=current_user.full_name or current_user.username,
+            company=company,
+        )
+        import asyncio as _asyncio
+        _asyncio.ensure_future(notify(db, "inkas", text))
+    except Exception:
+        pass
+
     return record
 
 

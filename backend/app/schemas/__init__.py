@@ -295,6 +295,8 @@ class AdCampaignCreate(BaseModel):
     subscribers_gained: Optional[int] = None
     screenshot_url: Optional[str] = None
     notes: Optional[str] = None
+    budget_source: Optional[str] = "account"       # account | investment | stats_only
+    investor_partner_id: Optional[str] = None
 
 
 class AdCampaignUpdate(BaseModel):
@@ -305,6 +307,8 @@ class AdCampaignUpdate(BaseModel):
     subscribers_gained: Optional[int] = None
     screenshot_url: Optional[str] = None
     notes: Optional[str] = None
+    budget_source: Optional[str] = None
+    investor_partner_id: Optional[str] = None
 
 
 class AdCampaignOut(BaseModel):
@@ -444,6 +448,7 @@ class SettingsUpdate(BaseModel):
     notify_monthly: Optional[bool] = None
     notify_server: Optional[bool] = None
     notify_anomaly: Optional[bool] = None
+    tg_allowed_ids: Optional[str] = None   # "123456,789012" — белый список TG ID
 
 
 # ── Report ────────────────────────────────────────────────────────────────────

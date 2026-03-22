@@ -138,13 +138,78 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
-    c = AdCampaign(**data.model_dump(), created_by=current_user.id)
-    db.add(c)
+    from app.models import Transaction, TransactionType, InkasRecord, InkasType, AppSettings, Category
+    from app.services.notification_service import notify, format_ad
+
+    transaction_id = None
+    budget_source = data.budget_source or "account"
+
+    # Списываем бюджет в зависимости от источника
+    if budget_source == "account":
+        # Ищем категорию "Реклама"
+        cat_r = await db.execute(
+            select(Category).where(Category.name.ilike("%реклам%")).limit(1)
+        )
+        cat = cat_r.scalar_one_or_none()
+        t = Transaction(
+            type=TransactionType.expense,
+            amount=data.amount,
+            date=data.date,
+            category_id=cat.id if cat else None,
+            description=f"Реклама: {data.channel_name or 'канал'}",
+            created_by=current_user.id,
+        )
+        db.add(t)
+        await db.flush()
+        transaction_id = t.id
+
+    elif budget_source == "investment" and data.investor_partner_id:
+        # Записываем как инвестицию партнёра
+        inkas = InkasRecord(
+            partner_id=data.investor_partner_id,
+            type=InkasType.investment,
+            amount=data.amount,
+            date=data.date,
+            description=f"Инвестиция в рекламу: {data.channel_name or 'канал'}",
+            created_by=current_user.id,
+        )
+        db.add(inkas)
+        await db.flush()
+
+    ad_data = data.model_dump()
+    ad_data["budget_source"] = budget_source
+    ad_data["transaction_id"] = transaction_id
+    campaign = AdCampaign(**ad_data, created_by=current_user.id)
+    db.add(campaign)
     await db.flush()
-    await db.refresh(c)
-    cps = round(c.amount / c.subscribers_gained, 2) if c.subscribers_gained and c.subscribers_gained > 0 else None
+    await db.refresh(campaign)
+
+    # Уведомление
+    try:
+        company_r = await db.execute(select(AppSettings).where(AppSettings.key == "company_name"))
+        company_row = company_r.scalar_one_or_none()
+        company = company_row.value if company_row else "Бухгалтерия"
+        partner_name = None
+        if data.investor_partner_id:
+            from app.models import Partner as PartnerM
+            pr = await db.execute(select(PartnerM).where(PartnerM.id == data.investor_partner_id))
+            pm = pr.scalar_one_or_none()
+            partner_name = pm.name if pm else None
+        import asyncio as _asyncio
+        _asyncio.ensure_future(notify(db, "ad", format_ad(
+            channel_name=data.channel_name or "канал",
+            amount=data.amount,
+            budget_source=budget_source,
+            partner_name=partner_name,
+            user_name=current_user.full_name or current_user.username,
+            company=company,
+        )))
+    except Exception:
+        pass
+
+    cps = round(campaign.amount / campaign.subscribers_gained, 2) if campaign.subscribers_gained and campaign.subscribers_gained > 0 else None
     return AdCampaignOut.model_validate({
-        **{col.name: getattr(c, col.name) for col in c.__table__.columns},
+        **{col.name: getattr(campaign, col.name) for col in campaign.__table__.columns},
         "cost_per_sub": cps,
     })
 
