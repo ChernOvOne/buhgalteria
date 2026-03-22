@@ -26,7 +26,81 @@ if [ -f /etc/os-release ]; then
     [[ "$ID" != "ubuntu" ]] && warn "Рекомендуется Ubuntu 22.04/24.04, продолжаем..."
 fi
 
-# Если уже установлено — чистим
+# ── Ждём освобождения apt/dpkg ────────────────────────────────────────────────
+wait_apt() {
+    local waited=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+       || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        if [ "$waited" -eq 0 ]; then
+            info "Ожидаем завершения системных обновлений..."
+        fi
+        sleep 3
+        waited=$((waited + 3))
+        [ "$waited" -ge 180 ] && err "apt заблокирован более 3 минут. Перезагрузите сервер и попробуйте снова."
+    done
+    [ "$waited" -gt 0 ] && log "apt свободен, продолжаем"
+}
+
+# Убиваем unattended-upgrades если он работает слишком долго
+kill_unattended() {
+    if pgrep -x unattended-upgr >/dev/null 2>&1; then
+        warn "Останавливаем фоновые обновления..."
+        systemctl stop unattended-upgrades 2>/dev/null || true
+        # Ждём ещё раз
+        sleep 3
+    fi
+}
+
+kill_unattended
+wait_apt
+
+# ── Обновление пакетов ────────────────────────────────────────────────────────
+info "Обновление списка пакетов..."
+apt-get update -qq
+log "Пакеты обновлены"
+
+wait_apt
+info "Установка зависимостей (git, curl, openssl, certbot)..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y git curl openssl certbot
+log "Зависимости установлены"
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+if command -v docker &>/dev/null; then
+    log "Docker уже установлен ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+else
+    wait_apt
+    info "Установка Docker..."
+    # Устанавливаем вручную без скрипта get.docker.com чтобы контролировать apt lock
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    wait_apt
+    apt-get update -qq
+    wait_apt
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io
+    systemctl enable docker
+    systemctl start docker
+    log "Docker установлен ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+fi
+
+# ── Docker Compose ────────────────────────────────────────────────────────────
+if docker compose version &>/dev/null 2>&1; then
+    log "Docker Compose уже установлен"
+else
+    info "Установка Docker Compose plugin..."
+    mkdir -p /usr/local/lib/docker/cli-plugins
+    curl -SL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+    log "Docker Compose установлен"
+fi
+
+# ── Если уже установлено — чистим ────────────────────────────────────────────
 if [ -d "$INSTALL_DIR" ]; then
     warn "Найдена предыдущая установка — удаляем..."
     cd /root
@@ -35,49 +109,13 @@ if [ -d "$INSTALL_DIR" ]; then
     log "Старая установка удалена"
 fi
 
-wait_apt() {
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-        info "Ждём освобождения apt..."
-        sleep 5
-    done
-}
-
-wait_apt
-info "Обновление пакетов..."
-apt-get update -qq
-
-wait_apt
-info "Установка зависимостей..."
-apt-get install -y -qq git curl openssl certbot 2>/dev/null || true
-
-wait_apt
-if ! command -v docker &>/dev/null; then
-    info "Установка Docker..."
-    curl -fsSL https://get.docker.com | sh
-    systemctl enable docker
-    systemctl start docker
-    log "Docker установлен"
-else
-    log "Docker уже установлен"
-fi
-
-if ! docker compose version &>/dev/null 2>&1; then
-    info "Установка Docker Compose plugin..."
-    mkdir -p /usr/local/lib/docker/cli-plugins
-    curl -SL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64" \
-        -o /usr/local/lib/docker/cli-plugins/docker-compose
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-    log "Docker Compose установлен"
-else
-    log "Docker Compose уже установлен"
-fi
-
+# ── Клонирование ──────────────────────────────────────────────────────────────
 info "Клонирование репозитория..."
 git clone "$REPO_URL" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 log "Репозиторий готов"
 
-# Создаём .env напрямую — без .env.example
+# ── Создаём .env ──────────────────────────────────────────────────────────────
 info "Настройка окружения..."
 
 SECRET_KEY=$(openssl rand -hex 32)
@@ -107,7 +145,8 @@ ENVEOF
 
 log ".env создан"
 
-info "Сборка и запуск (займёт 2-5 минут)..."
+# ── Запуск сервисов ───────────────────────────────────────────────────────────
+info "Сборка Docker образов и запуск (займёт 3-7 минут)..."
 docker compose up -d --build db redis backend frontend nginx
 log "Основные сервисы запущены"
 
@@ -116,6 +155,7 @@ if [ -n "$TG_TOKEN" ]; then
     log "Telegram бот запущен"
 fi
 
+# ── Команда buh ───────────────────────────────────────────────────────────────
 info "Установка команды buh..."
 cat > /usr/local/bin/buh << 'EOF'
 #!/usr/bin/env bash
@@ -125,25 +165,38 @@ EOF
 chmod +x /usr/local/bin/buh
 log "Команда buh установлена"
 
-info "Ожидание запуска backend..."
+# ── Ожидание backend ──────────────────────────────────────────────────────────
+info "Ожидание запуска backend (до 2 минут)..."
 for i in $(seq 1 40); do
     if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
-        log "Backend готов"
+        log "Backend готов!"
         break
     fi
     printf "."
     sleep 3
-    [ "$i" -eq 40 ] && echo "" && warn "Проверьте логи: docker compose logs backend"
+    [ "$i" -eq 40 ] && echo "" && warn "Backend долго стартует. Проверьте: docker compose logs backend"
 done
 echo ""
 
+# ── Файрвол ───────────────────────────────────────────────────────────────────
+if command -v ufw &>/dev/null; then
+    info "Настройка файрвола..."
+    ufw allow 22/tcp  >/dev/null 2>&1
+    ufw allow 80/tcp  >/dev/null 2>&1
+    ufw allow 443/tcp >/dev/null 2>&1
+    ufw allow 8000/tcp>/dev/null 2>&1
+    echo "y" | ufw enable >/dev/null 2>&1
+    log "Файрвол настроен (22, 80, 443, 8000)"
+fi
+
+# ── SSL ───────────────────────────────────────────────────────────────────────
 if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN" = "localhost" ]; then
-    warn "IP/localhost — SSL пропускается"
+    warn "IP/localhost — SSL пропускается. Настройте домен и запустите 'buh' → пункт 9"
 else
     echo ""
     ask "Установить SSL (Let's Encrypt) для $DOMAIN? [y/N]: " INSTALL_SSL
     if [[ "$INSTALL_SSL" =~ ^[Yy]$ ]]; then
-        ask "Email для SSL: " SSL_EMAIL
+        ask "Email для SSL уведомлений: " SSL_EMAIL
         mkdir -p /var/www/certbot
         if certbot certonly --webroot -w /var/www/certbot \
             -d "$DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
@@ -159,15 +212,17 @@ else
     fi
 fi
 
+# ── Готово ────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo -e "${BOLD}${GREEN}   Установка завершена успешно!${NC}"
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo ""
-echo -e "  Адрес:   ${BLUE}http://$DOMAIN${NC}"
-echo -e "  API:     ${BLUE}http://$DOMAIN:8000/api/health${NC}"
+echo -e "  Адрес:    ${BLUE}http://$DOMAIN${NC}"
+echo -e "  API:      ${BLUE}http://$DOMAIN:8000/api/health${NC}"
+echo -e "  Swagger:  ${BLUE}http://$DOMAIN:8000/docs${NC}"
 echo ""
-echo -e "  Логин:   ${BOLD}admin${NC}   Пароль: ${BOLD}admin123${NC}"
+echo -e "  Логин:    ${BOLD}admin${NC}   Пароль: ${BOLD}admin123${NC}"
 echo -e "  ${YELLOW}⚠ Смените пароль после первого входа!${NC}"
 echo ""
 echo -e "  Управление: ${BOLD}buh${NC}"
