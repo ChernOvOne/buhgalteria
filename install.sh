@@ -35,12 +35,22 @@ if [ -d "$INSTALL_DIR" ]; then
     log "Старая установка удалена"
 fi
 
+wait_apt() {
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        info "Ждём освобождения apt..."
+        sleep 5
+    done
+}
+
+wait_apt
 info "Обновление пакетов..."
 apt-get update -qq
 
+wait_apt
 info "Установка зависимостей..."
 apt-get install -y -qq git curl openssl certbot 2>/dev/null || true
 
+wait_apt
 if ! command -v docker &>/dev/null; then
     info "Установка Docker..."
     curl -fsSL https://get.docker.com | sh
