@@ -1,0 +1,61 @@
+events { worker_connections 1024; }
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+    client_max_body_size 50M;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/x-javascript;
+
+    upstream backend  { server backend:8000; }
+    upstream frontend { server frontend:80;  }
+
+    # HTTP → HTTPS redirect
+    server {
+        listen 80;
+        server_name DOMAIN_PLACEHOLDER;
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # HTTPS
+    server {
+        listen 443 ssl;
+        server_name DOMAIN_PLACEHOLDER;
+
+        ssl_certificate     /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_ciphers         HIGH:!aNULL:!MD5;
+        ssl_session_cache   shared:SSL:10m;
+
+        location /api/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_read_timeout 300;
+        }
+
+        location /uploads/ {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+        }
+
+        location / {
+            proxy_pass http://frontend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+}

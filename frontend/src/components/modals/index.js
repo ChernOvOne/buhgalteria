@@ -1,0 +1,1 @@
+export { PartnerModal } from './PartnerModal'
