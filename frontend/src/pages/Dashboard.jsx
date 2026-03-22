@@ -445,7 +445,7 @@ export default function Dashboard() {
         )}
 
         {/* UTM summary */}
-        {utmSummary && (utmSummary.leads_today > 0 || utmSummary.top_campaigns?.length > 0) && (
+        {utmSummary && (
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs font-medium text-gray-500">UTM Аналитика — лиды и конверсии</div>
