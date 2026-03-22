@@ -21,22 +21,26 @@ from app.api.other import (
 
 from sqlalchemy import text
 
-async def create_enum_if_not_exists(conn, name: str, values: list):
-    exists = await conn.execute(
-        text("SELECT 1 FROM pg_type WHERE typname = :name"),
-        {"name": name}
-    )
-    if not exists.scalar():
-        vals = ", ".join(f"'{v}'" for v in values)
-        await conn.execute(text(f"CREATE TYPE {name} AS ENUM ({vals})"))
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
-        await create_enum_if_not_exists(conn, "userrole", ["admin", "editor", "investor", "partner"])
-        await create_enum_if_not_exists(conn, "transactiontype", ["income", "expense"])
-        await create_enum_if_not_exists(conn, "inkastype", ["dividend", "return_inv", "investment"])
-        await create_enum_if_not_exists(conn, "serverstatus", ["active", "warning", "expired", "inactive"])
+        # Создаём enum типы через PL/pgSQL — не ломает транзакцию если уже существуют
+        await conn.execute(text("""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'userrole') THEN
+                    CREATE TYPE userrole AS ENUM ('admin', 'editor', 'investor', 'partner');
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transactiontype') THEN
+                    CREATE TYPE transactiontype AS ENUM ('income', 'expense');
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inkastype') THEN
+                    CREATE TYPE inkastype AS ENUM ('dividend', 'return_inv', 'investment');
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'serverstatus') THEN
+                    CREATE TYPE serverstatus AS ENUM ('active', 'warning', 'expired', 'inactive');
+                END IF;
+            END $$;
+        """))
         await conn.run_sync(Base.metadata.create_all)
 
     # Создаём папку для загрузок
