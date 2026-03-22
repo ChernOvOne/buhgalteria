@@ -5,7 +5,7 @@ import { clsx } from '@/utils'
 import {
   LayoutDashboard, TrendingUp, TrendingDown, Megaphone,
   Server, Users, ArrowLeftRight, FileText, Settings,
-  LogOut, Menu, X, CreditCard,
+  LogOut, Menu, X, CreditCard, BarChart2,
 } from 'lucide-react'
 
 const NAV = [
@@ -18,6 +18,7 @@ const NAV = [
   { to: '/partners',    icon: Users,           label: 'Партнёры' },
   { to: '/inkas',       icon: ArrowLeftRight,  label: 'Инкас'    },
   { to: '/reports',     icon: FileText,        label: 'Отчёты'   },
+  { to: '/compare',    icon: BarChart2,       label: 'Сравнение' },
 ]
 
 function NavItem({ to, icon: Icon, label, onClick }) {

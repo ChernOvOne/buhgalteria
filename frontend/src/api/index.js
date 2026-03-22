@@ -152,3 +152,9 @@ export const notifChannelsAPI = {
   delete: (id) => api.delete(`/notification-channels/${id}`),
   test: (id) => api.post(`/notification-channels/test/${id}`),
 }
+
+// ── Compare ───────────────────────────────────────────────────────────────────
+export const compareAPI = {
+  compare: (data) => api.post('/compare/', data),
+  sendTelegram: (data) => api.post('/compare/send-telegram', data),
+}
