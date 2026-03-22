@@ -65,27 +65,32 @@ log "Репозиторий готов"
 
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     info "Настройка окружения..."
-    cp .env.example .env
 
     SECRET_KEY=$(openssl rand -hex 32)
     DB_PASSWORD=$(openssl rand -hex 16)
-    sed -i "s/buhpass_change_me/$DB_PASSWORD/" .env
-    sed -i "s/your-very-long-secret-key-change-this-in-production/$SECRET_KEY/" .env
 
     echo ""
     ask "Введите домен или IP сервера: " DOMAIN
     DOMAIN="${DOMAIN:-localhost}"
-    sed -i "s/yourdomain.com/$DOMAIN/" .env
 
     echo ""
     ask "Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
+    TG_CHAN=""
+    TG_ADMIN=""
     if [ -n "$TG_TOKEN" ]; then
-        sed -i "s|^TG_BOT_TOKEN=.*|TG_BOT_TOKEN=$TG_TOKEN|" .env
         ask "Telegram Channel ID для отчётов: " TG_CHAN
-        [ -n "$TG_CHAN" ] && sed -i "s|^TG_CHANNEL_ID=.*|TG_CHANNEL_ID=$TG_CHAN|" .env
         ask "Ваш Telegram User ID: " TG_ADMIN
-        [ -n "$TG_ADMIN" ] && sed -i "s|^TG_ADMIN_ID=.*|TG_ADMIN_ID=$TG_ADMIN|" .env
     fi
+
+    cat > "$INSTALL_DIR/.env" << ENVEOF
+DB_PASSWORD=$DB_PASSWORD
+SECRET_KEY=$SECRET_KEY
+DOMAIN=$DOMAIN
+TG_BOT_TOKEN=$TG_TOKEN
+TG_CHANNEL_ID=$TG_CHAN
+TG_ADMIN_ID=$TG_ADMIN
+ENVEOF
+
     log ".env создан"
 else
     log ".env уже существует, пропускаем"
