@@ -35,13 +35,7 @@ async def utm_redirect(
     # Определяем куда редиректить
     if campaign and campaign.target_url:
         target = campaign.target_url
-        # Для бота добавляем start-параметр
-        if campaign.target_type == "bot":
-            base = target.rstrip("/")
-            if "?start=" not in base:
-                target = f"{base}?start={utm_code}"
     else:
-        # Fallback — главная страница
         target = "https://t.me"
 
     # Записываем клик
