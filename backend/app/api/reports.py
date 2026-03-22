@@ -111,11 +111,19 @@ async def collect_report_data(db: AsyncSession, date_from: date, date_to: date):
     ads = ad_result.scalars().all()
     ads_dicts = []
     for a in ads:
-        cps = round(a.amount / a.subscribers_gained, 2) if a.subscribers_gained and a.subscribers_gained > 0 else None
-        ads_dicts.append({
-            **{col.name: getattr(a, col.name) for col in a.__table__.columns},
-            "cost_per_sub": cps,
-        })
+        try:
+            cps = round(a.amount / a.subscribers_gained, 2) if a.subscribers_gained and a.subscribers_gained > 0 else None
+            ads_dicts.append({
+                "id": a.id, "date": a.date, "channel_name": a.channel_name,
+                "channel_url": a.channel_url, "format": a.format,
+                "amount": a.amount, "subscribers_gained": a.subscribers_gained,
+                "screenshot_url": a.screenshot_url, "notes": a.notes,
+                "budget_source": getattr(a, "budget_source", "account"),
+                "cost_per_sub": cps,
+                "created_at": a.created_at,
+            })
+        except Exception:
+            pass
 
     # Компания
     cn_r = await db.execute(select(AppSettings).where(AppSettings.key == "company_name"))
@@ -147,14 +155,20 @@ async def export_pdf(
 
     period_label = f"{data.date_from.strftime('%d.%m.%Y')} — {data.date_to.strftime('%d.%m.%Y')}"
 
-    pdf_bytes = generate_pdf_report(
-        company_name=company_name,
-        period_label=period_label,
-        kpi=kpi,
-        transactions=transactions,
-        expense_by_category=expense_by_cat,
-        partners_summary=partners_summary,
-    )
+    try:
+        pdf_bytes = generate_pdf_report(
+            company_name=company_name,
+            period_label=period_label,
+            kpi=kpi,
+            transactions=transactions,
+            expense_by_category=expense_by_cat,
+            partners_summary=partners_summary,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"PDF generation error: {e}", exc_info=True)
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации PDF: {str(e)}")
 
     filename = f"report_{data.date_from}_{data.date_to}.pdf"
     return Response(
