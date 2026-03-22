@@ -8,18 +8,10 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${BLUE}[→]${NC} $1"; }
+ask()  { read -p "  $1" "$2" </dev/tty; }
 
 INSTALL_DIR="/opt/buhgalteria"
 REPO_URL="https://github.com/ChernOvOne/buhgalteria.git"
-SCRIPT_URL="https://raw.githubusercontent.com/ChernOvOne/buhgalteria/main/install.sh"
-
-# Если запущен через pipe и это НЕ повторный запуск — скачиваем и перезапускаем
-if [ ! -t 0 ] && [ "$1" != "--tty" ]; then
-    echo "Скачиваем установщик..."
-    curl -fsSL "$SCRIPT_URL" -o /tmp/buh_install.sh
-    chmod +x /tmp/buh_install.sh
-    exec bash /tmp/buh_install.sh --tty
-fi
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
@@ -32,6 +24,15 @@ echo ""
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     [[ "$ID" != "ubuntu" ]] && warn "Рекомендуется Ubuntu 22.04/24.04, продолжаем..."
+fi
+
+# Если уже установлено — чистим
+if [ -d "$INSTALL_DIR" ]; then
+    warn "Найдена предыдущая установка — удаляем..."
+    cd /root
+    docker compose -f "$INSTALL_DIR/docker-compose.yml" down --volumes --remove-orphans 2>/dev/null || true
+    rm -rf "$INSTALL_DIR"
+    log "Старая установка удалена"
 fi
 
 info "Обновление пакетов..."
@@ -62,49 +63,45 @@ else
 fi
 
 info "Клонирование репозитория..."
-if [ -d "$INSTALL_DIR/.git" ]; then
-    warn "Проект уже установлен, обновляем..."
-    cd "$INSTALL_DIR" && git pull --rebase
-else
-    git clone "$REPO_URL" "$INSTALL_DIR"
-fi
+git clone "$REPO_URL" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 log "Репозиторий готов"
 
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-    info "Настройка окружения..."
-    cp .env.example .env
+# Создаём .env напрямую — без .env.example
+info "Настройка окружения..."
 
-    SECRET_KEY=$(openssl rand -hex 32)
-    DB_PASSWORD=$(openssl rand -hex 16)
-    sed -i "s/buhpass_change_me/$DB_PASSWORD/" .env
-    sed -i "s/your-very-long-secret-key-change-this-in-production/$SECRET_KEY/" .env
+SECRET_KEY=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 16)
 
-    echo ""
-    read -p "  Введите домен или IP сервера: " DOMAIN
-    DOMAIN="${DOMAIN:-localhost}"
-    sed -i "s/yourdomain.com/$DOMAIN/" .env
+echo ""
+ask "Введите домен или IP сервера: " DOMAIN
+DOMAIN="${DOMAIN:-localhost}"
 
-    echo ""
-    read -p "  Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
-    if [ -n "$TG_TOKEN" ]; then
-        sed -i "s|^TG_BOT_TOKEN=.*|TG_BOT_TOKEN=$TG_TOKEN|" .env
-        read -p "  Telegram Channel ID для отчётов: " TG_CHAN
-        [ -n "$TG_CHAN" ] && sed -i "s|^TG_CHANNEL_ID=.*|TG_CHANNEL_ID=$TG_CHAN|" .env
-        read -p "  Ваш Telegram User ID: " TG_ADMIN
-        [ -n "$TG_ADMIN" ] && sed -i "s|^TG_ADMIN_ID=.*|TG_ADMIN_ID=$TG_ADMIN|" .env
-    fi
-    log ".env создан"
-else
-    log ".env уже существует, пропускаем"
+echo ""
+ask "Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
+TG_CHAN=""
+TG_ADMIN=""
+if [ -n "$TG_TOKEN" ]; then
+    ask "Telegram Channel ID для отчётов: " TG_CHAN
+    ask "Ваш Telegram User ID: " TG_ADMIN
 fi
+
+cat > "$INSTALL_DIR/.env" << ENVEOF
+DB_PASSWORD=$DB_PASSWORD
+SECRET_KEY=$SECRET_KEY
+DOMAIN=$DOMAIN
+TG_BOT_TOKEN=$TG_TOKEN
+TG_CHANNEL_ID=$TG_CHAN
+TG_ADMIN_ID=$TG_ADMIN
+ENVEOF
+
+log ".env создан"
 
 info "Сборка и запуск (займёт 2-5 минут)..."
 docker compose up -d --build db redis backend frontend nginx
 log "Основные сервисы запущены"
 
-TG_TOKEN_VAL=$(grep '^TG_BOT_TOKEN=' .env | cut -d'=' -f2)
-if [ -n "$TG_TOKEN_VAL" ]; then
+if [ -n "$TG_TOKEN" ]; then
     docker compose --profile bot up -d --build bot
     log "Telegram бот запущен"
 fi
@@ -126,22 +123,21 @@ for i in $(seq 1 40); do
     fi
     printf "."
     sleep 3
-    [ "$i" -eq 40 ] && echo "" && warn "Backend долго стартует — проверьте: docker compose logs backend"
+    [ "$i" -eq 40 ] && echo "" && warn "Проверьте логи: docker compose logs backend"
 done
 echo ""
 
-DOMAIN_VAL=$(grep '^DOMAIN=' .env | cut -d'=' -f2)
-if [[ "$DOMAIN_VAL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN_VAL" = "localhost" ]; then
+if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN" = "localhost" ]; then
     warn "IP/localhost — SSL пропускается"
 else
     echo ""
-    read -p "  Установить SSL (Let's Encrypt) для $DOMAIN_VAL? [y/N]: " INSTALL_SSL
+    ask "Установить SSL (Let's Encrypt) для $DOMAIN? [y/N]: " INSTALL_SSL
     if [[ "$INSTALL_SSL" =~ ^[Yy]$ ]]; then
-        read -p "  Email для SSL: " SSL_EMAIL
+        ask "Email для SSL: " SSL_EMAIL
         mkdir -p /var/www/certbot
         if certbot certonly --webroot -w /var/www/certbot \
-            -d "$DOMAIN_VAL" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
-            sed "s/DOMAIN_PLACEHOLDER/$DOMAIN_VAL/g" \
+            -d "$DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
+            sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" \
                 "$INSTALL_DIR/nginx/nginx-ssl.conf.template" \
                 > "$INSTALL_DIR/nginx/nginx.conf"
             docker compose restart nginx
@@ -153,14 +149,13 @@ else
     fi
 fi
 
-DOMAIN_VAL=$(grep '^DOMAIN=' .env | cut -d'=' -f2)
 echo ""
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo -e "${BOLD}${GREEN}   Установка завершена успешно!${NC}"
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo ""
-echo -e "  Адрес:   ${BLUE}http://$DOMAIN_VAL${NC}"
-echo -e "  API:     ${BLUE}http://$DOMAIN_VAL:8000/api/health${NC}"
+echo -e "  Адрес:   ${BLUE}http://$DOMAIN${NC}"
+echo -e "  API:     ${BLUE}http://$DOMAIN:8000/api/health${NC}"
 echo ""
 echo -e "  Логин:   ${BOLD}admin${NC}   Пароль: ${BOLD}admin123${NC}"
 echo -e "  ${YELLOW}⚠ Смените пароль после первого входа!${NC}"
