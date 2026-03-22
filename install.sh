@@ -12,15 +12,13 @@ info() { echo -e "${BLUE}[→]${NC} $1"; }
 INSTALL_DIR="/opt/buhgalteria"
 REPO_URL="https://github.com/ChernOvOne/buhgalteria.git"
 SCRIPT_URL="https://raw.githubusercontent.com/ChernOvOne/buhgalteria/main/install.sh"
-TMP_SCRIPT="/tmp/buh_install.sh"
 
-# Если запущен через pipe (curl | bash) — stdin не TTY, перезапускаем из файла
-if [ ! -t 0 ]; then
-    echo -e "${BOLD}Скачиваем установщик...${NC}"
-    curl -fsSL "$SCRIPT_URL" -o "$TMP_SCRIPT"
-    chmod +x "$TMP_SCRIPT"
-    exec bash "$TMP_SCRIPT" "$@"
-    exit 0
+# Если запущен через pipe и это НЕ повторный запуск — скачиваем и перезапускаем
+if [ ! -t 0 ] && [ "$1" != "--tty" ]; then
+    echo "Скачиваем установщик..."
+    curl -fsSL "$SCRIPT_URL" -o /tmp/buh_install.sh
+    chmod +x /tmp/buh_install.sh
+    exec bash /tmp/buh_install.sh --tty
 fi
 
 echo ""
