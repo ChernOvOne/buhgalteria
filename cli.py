@@ -193,18 +193,138 @@ def show_info():
     print(f"  API Docs:       {c(BLUE, f'http://{domain}:8000/docs')}")
     print(f"  Бэкапы:         /opt/buhgalteria-backups/")
 
+
+def versions():
+    """Показывает список версий и позволяет переключиться на любую."""
+    print(c(BLUE, "→") + " Получаем список версий...")
+
+    # Получаем локальные теги (обновляем с remote)
+    run("git fetch --tags", check=False)
+
+    result = run(
+        'git tag -l --sort=-version:refname',
+        check=False, capture=True
+    )
+    tags = [t.strip() for t in (result.stdout or "").splitlines() if t.strip()]
+
+    # Текущая версия/коммит
+    cur_result = run("git describe --tags --always", check=False, capture=True)
+    current = (cur_result.stdout or "").strip()
+    cur_commit = run("git rev-parse --short HEAD", check=False, capture=True)
+    current_commit = (cur_commit.stdout or "").strip()
+
+    print(f"\n  Текущая версия: {c(BOLD, current)} ({current_commit})")
+
+    if not tags:
+        warn("Теги не найдены. Создайте первый тег:")
+        print(f"  git tag -a v1.0.0 -m \"Первый релиз\"")
+        print(f"  git push origin v1.0.0")
+        return
+
+    print(f"\n  Доступные версии:")
+    options = ["latest"] + tags
+    for i, tag in enumerate(options):
+        marker = " ← текущая" if tag == current else ""
+        is_latest = " (последняя)" if tag == "latest" else ""
+        print(f"  {c(BOLD, str(i))}. {tag}{is_latest}{c(GREEN, marker)}")
+
+    print()
+    try:
+        choice = input("  Выберите версию (номер) или Enter для отмены: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not choice:
+        print("Отменено")
+        return
+
+    try:
+        idx = int(choice)
+        if idx < 0 or idx >= len(options):
+            print(c(YELLOW, "!") + " Неверный номер")
+            return
+    except ValueError:
+        print(c(YELLOW, "!") + " Введите номер")
+        return
+
+    selected = options[idx]
+    print()
+
+    if selected == "latest":
+        print(c(BLUE, "→") + " Обновление до последней версии...")
+        run("git stash", check=False)
+        run("git checkout main", check=False)
+        run("git pull origin main")
+        run("git stash pop", check=False)
+    else:
+        confirm = input(f"  Переключиться на {c(BOLD, selected)}? [y/N]: ").strip()
+        if confirm.lower() != "y":
+            print("Отменено")
+            return
+        print(c(BLUE, "→") + f" Переключаемся на {selected}...")
+        run("git stash", check=False)
+        run(f"git checkout {selected}")
+
+    print(c(BLUE, "→") + " Пересборка сервисов...")
+    run(f"{COMPOSE} up -d --build --no-deps backend frontend")
+
+    token_val = _get_env("TG_BOT_TOKEN", "")
+    if token_val:
+        run(f"{COMPOSE} --profile bot up -d --build --no-deps bot")
+
+    new_ver = run("git describe --tags --always", check=False, capture=True)
+    print(c(GREEN, "✓") + f" Активная версия: {(new_ver.stdout or '').strip()}")
+
+
+def create_tag():
+    """Создаёт новый тег (релиз) из текущего состояния."""
+    cur = run("git describe --tags --always", check=False, capture=True)
+    print(f"  Текущая версия: {(cur.stdout or '').strip()}")
+
+    # Предлагаем следующую версию
+    tags_r = run("git tag -l --sort=-version:refname", check=False, capture=True)
+    tags = [t.strip() for t in (tags_r.stdout or "").splitlines() if t.strip()]
+    if tags:
+        last = tags[0].lstrip("v")
+        parts = last.split(".")
+        try:
+            parts[-1] = str(int(parts[-1]) + 1)
+            suggested = "v" + ".".join(parts)
+        except ValueError:
+            suggested = "v1.0.0"
+    else:
+        suggested = "v1.0.0"
+
+    try:
+        tag = input(f"  Имя тега [{suggested}]: ").strip() or suggested
+        msg = input(f"  Описание релиза: ").strip() or f"Release {tag}"
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    run(f'git add -A')
+    # Проверяем есть ли изменения
+    diff = run("git diff --cached --name-only", check=False, capture=True)
+    if diff.stdout and diff.stdout.strip():
+        run(f'git commit -m "Release {tag}: {msg}"', check=False)
+    run(f'git tag -a {tag} -m "{msg}"')
+    run(f'git push origin main --tags')
+    print(c(GREEN, "✓") + f" Тег {tag} создан и отправлен на GitHub")
+
+
 MENU = """
   1.  Статус сервисов
   2.  Запустить
   3.  Остановить
   4.  Перезапустить
-  5.  Обновить (git pull + rebuild)
-  6.  Просмотр логов
-  7.  Создать резервную копию БД
-  8.  Восстановить из резервной копии
-  9.  Настроить SSL (Let's Encrypt)
-  10. Создать администратора
-  11. Информация о сервисе
+  5.  Обновить до последней версии
+  6.  Выбрать версию / откат
+  7.  Создать новый релиз (тег)
+  8.  Просмотр логов
+  9.  Создать резервную копию БД
+  10. Восстановить из резервной копии
+  11. Настроить SSL (Let's Encrypt)
+  12. Создать администратора
+  13. Информация о сервисе
   0.  Выход
 """
 
@@ -223,14 +343,16 @@ def interactive_menu():
         elif choice == "3":  stop()
         elif choice == "4":  restart()
         elif choice == "5":  update()
-        elif choice == "6":
+        elif choice == "6":  versions()
+        elif choice == "7":  create_tag()
+        elif choice == "8":
             svc = input("Сервис (оставьте пустым для всех): ").strip()
             logs(svc or None)
-        elif choice == "7":  backup()
-        elif choice == "8":  restore()
-        elif choice == "9":  ssl_setup()
-        elif choice == "10": create_admin()
-        elif choice == "11": show_info()
+        elif choice == "9":  backup()
+        elif choice == "10": restore()
+        elif choice == "11": ssl_setup()
+        elif choice == "12": create_admin()
+        elif choice == "13": show_info()
         elif choice == "0":  break
         else: print(c(YELLOW, "!") + " Неверный выбор")
         print()
@@ -244,6 +366,7 @@ if __name__ == "__main__":
         cmds = {
             "status": status, "start": start, "stop": stop,
             "restart": restart, "update": update,
+            "versions": versions, "tag": create_tag,
             "backup": backup, "restore": restore,
             "info": show_info,
             "logs": lambda: logs(sys.argv[2] if len(sys.argv) > 2 else None),
