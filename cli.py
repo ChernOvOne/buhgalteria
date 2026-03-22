@@ -216,7 +216,7 @@ def versions():
     print(f"\n  Текущая версия: {c(BOLD, current)} ({current_commit})")
 
     if not tags:
-        warn("Теги не найдены. Создайте первый тег:")
+        print(c(YELLOW, "!") + " Теги не найдены. Создайте первый тег:")
         print(f"  git tag -a v1.0.0 -m \"Первый релиз\"")
         print(f"  git push origin v1.0.0")
         return
