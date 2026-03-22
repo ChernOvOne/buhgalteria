@@ -25,23 +25,26 @@ from sqlalchemy import text
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
-        # Создаём enum типы через PL/pgSQL — не ломает транзакцию если уже существуют
-        await conn.execute(text("""
-            DO $$ BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'userrole') THEN
-                    CREATE TYPE userrole AS ENUM ('admin', 'editor', 'investor', 'partner');
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transactiontype') THEN
-                    CREATE TYPE transactiontype AS ENUM ('income', 'expense');
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inkastype') THEN
-                    CREATE TYPE inkastype AS ENUM ('dividend', 'return_inv', 'investment');
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'serverstatus') THEN
-                    CREATE TYPE serverstatus AS ENUM ('active', 'warning', 'expired', 'inactive');
-                END IF;
-            END $$;
-        """))
+        # Создаём enum типы — try/except на случай если уже существуют
+        try:
+            await conn.execute(text("""
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'userrole') THEN
+                        CREATE TYPE userrole AS ENUM ('admin', 'editor', 'investor', 'partner');
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transactiontype') THEN
+                        CREATE TYPE transactiontype AS ENUM ('income', 'expense');
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inkastype') THEN
+                        CREATE TYPE inkastype AS ENUM ('dividend', 'return_inv', 'investment');
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'serverstatus') THEN
+                        CREATE TYPE serverstatus AS ENUM ('active', 'warning', 'expired', 'inactive');
+                    END IF;
+                END $$;
+            """))
+        except Exception:
+            pass  # типы уже существуют — всё в порядке
         await conn.run_sync(Base.metadata.create_all)
 
     # Создаём папку для загрузок
