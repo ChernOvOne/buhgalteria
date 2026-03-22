@@ -21,6 +21,14 @@ echo ""
 
 [ "$(id -u)" -ne 0 ] && err "Запустите от root: sudo bash install.sh"
 
+# ── Если уже установлено — чистим полностью ───────────────────────────────────
+if [ -d "$INSTALL_DIR" ]; then
+    warn "Найдена предыдущая установка — удаляем..."
+    cd "$INSTALL_DIR" 2>/dev/null && docker compose down --volumes --remove-orphans 2>/dev/null || true
+    rm -rf "$INSTALL_DIR"
+    log "Старая установка удалена"
+fi
+
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     [[ "$ID" != "ubuntu" ]] && warn "Рекомендуется Ubuntu 22.04/24.04, продолжаем..."
@@ -54,35 +62,30 @@ else
 fi
 
 info "Клонирование репозитория..."
-if [ -d "$INSTALL_DIR/.git" ]; then
-    warn "Проект уже установлен, обновляем..."
-    cd "$INSTALL_DIR" && git pull --rebase
-else
-    git clone "$REPO_URL" "$INSTALL_DIR"
-fi
+git clone "$REPO_URL" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 log "Репозиторий готов"
 
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-    info "Настройка окружения..."
+# ── Создаём .env напрямую (без .env.example) ──────────────────────────────────
+info "Настройка окружения..."
 
-    SECRET_KEY=$(openssl rand -hex 32)
-    DB_PASSWORD=$(openssl rand -hex 16)
+SECRET_KEY=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 16)
 
-    echo ""
-    ask "Введите домен или IP сервера: " DOMAIN
-    DOMAIN="${DOMAIN:-localhost}"
+echo ""
+ask "Введите домен или IP сервера: " DOMAIN
+DOMAIN="${DOMAIN:-localhost}"
 
-    echo ""
-    ask "Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
-    TG_CHAN=""
-    TG_ADMIN=""
-    if [ -n "$TG_TOKEN" ]; then
-        ask "Telegram Channel ID для отчётов: " TG_CHAN
-        ask "Ваш Telegram User ID: " TG_ADMIN
-    fi
+echo ""
+ask "Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
+TG_CHAN=""
+TG_ADMIN=""
+if [ -n "$TG_TOKEN" ]; then
+    ask "Telegram Channel ID для отчётов: " TG_CHAN
+    ask "Ваш Telegram User ID: " TG_ADMIN
+fi
 
-    cat > "$INSTALL_DIR/.env" << ENVEOF
+cat > "$INSTALL_DIR/.env" << ENVEOF
 DB_PASSWORD=$DB_PASSWORD
 SECRET_KEY=$SECRET_KEY
 DOMAIN=$DOMAIN
@@ -91,21 +94,19 @@ TG_CHANNEL_ID=$TG_CHAN
 TG_ADMIN_ID=$TG_ADMIN
 ENVEOF
 
-    log ".env создан"
-else
-    log ".env уже существует, пропускаем"
-fi
+log ".env создан"
 
+# ── Запуск сервисов ───────────────────────────────────────────────────────────
 info "Сборка и запуск (займёт 2-5 минут)..."
 docker compose up -d --build db redis backend frontend nginx
 log "Основные сервисы запущены"
 
-TG_TOKEN_VAL=$(grep '^TG_BOT_TOKEN=' .env | cut -d'=' -f2)
-if [ -n "$TG_TOKEN_VAL" ]; then
+if [ -n "$TG_TOKEN" ]; then
     docker compose --profile bot up -d --build bot
     log "Telegram бот запущен"
 fi
 
+# ── Команда buh ───────────────────────────────────────────────────────────────
 info "Установка команды buh..."
 cat > /usr/local/bin/buh << 'EOF'
 #!/usr/bin/env bash
@@ -115,6 +116,7 @@ EOF
 chmod +x /usr/local/bin/buh
 log "Команда buh установлена"
 
+# ── Ожидание backend ──────────────────────────────────────────────────────────
 info "Ожидание запуска backend..."
 for i in $(seq 1 40); do
     if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
@@ -127,18 +129,18 @@ for i in $(seq 1 40); do
 done
 echo ""
 
-DOMAIN_VAL=$(grep '^DOMAIN=' .env | cut -d'=' -f2)
-if [[ "$DOMAIN_VAL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN_VAL" = "localhost" ]; then
+# ── SSL ───────────────────────────────────────────────────────────────────────
+if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN" = "localhost" ]; then
     warn "IP/localhost — SSL пропускается"
 else
     echo ""
-    ask "Установить SSL (Let's Encrypt) для $DOMAIN_VAL? [y/N]: " INSTALL_SSL
+    ask "Установить SSL (Let's Encrypt) для $DOMAIN? [y/N]: " INSTALL_SSL
     if [[ "$INSTALL_SSL" =~ ^[Yy]$ ]]; then
         ask "Email для SSL: " SSL_EMAIL
         mkdir -p /var/www/certbot
         if certbot certonly --webroot -w /var/www/certbot \
-            -d "$DOMAIN_VAL" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
-            sed "s/DOMAIN_PLACEHOLDER/$DOMAIN_VAL/g" \
+            -d "$DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
+            sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" \
                 "$INSTALL_DIR/nginx/nginx-ssl.conf.template" \
                 > "$INSTALL_DIR/nginx/nginx.conf"
             docker compose restart nginx
@@ -150,14 +152,14 @@ else
     fi
 fi
 
-DOMAIN_VAL=$(grep '^DOMAIN=' .env | cut -d'=' -f2)
+# ── Итог ──────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo -e "${BOLD}${GREEN}   Установка завершена успешно!${NC}"
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo ""
-echo -e "  Адрес:   ${BLUE}http://$DOMAIN_VAL${NC}"
-echo -e "  API:     ${BLUE}http://$DOMAIN_VAL:8000/api/health${NC}"
+echo -e "  Адрес:   ${BLUE}http://$DOMAIN${NC}"
+echo -e "  API:     ${BLUE}http://$DOMAIN:8000/api/health${NC}"
 echo ""
 echo -e "  Логин:   ${BOLD}admin${NC}   Пароль: ${BOLD}admin123${NC}"
 echo -e "  ${YELLOW}⚠ Смените пароль после первого входа!${NC}"
