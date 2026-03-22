@@ -123,6 +123,23 @@ async def receive_payment(
     db.add(payment)
     await db.commit()
 
+    # Ищем UTM-лида по customer_id и связываем
+    if payload.customer_id:
+        try:
+            from app.models import UtmLead
+            lead_r = await db.execute(
+                select(UtmLead)
+                .where(UtmLead.customer_id == payload.customer_id)
+                .order_by(UtmLead.created_at.desc())
+                .limit(1)
+            )
+            lead = lead_r.scalar_one_or_none()
+            if lead and not lead.converted:
+                lead.converted = True
+                payment.utm_code = lead.utm_code
+        except Exception:
+            pass
+
     # Уведомление
     try:
         from app.services.notification_service import notify, format_payment

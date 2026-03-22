@@ -297,6 +297,8 @@ class AdCampaignCreate(BaseModel):
     notes: Optional[str] = None
     budget_source: Optional[str] = "account"       # account | investment | stats_only
     investor_partner_id: Optional[str] = None
+    target_url: Optional[str] = None          # куда ведёт UTM ссылка
+    target_type: Optional[str] = "bot"        # bot | channel | custom
 
 
 class AdCampaignUpdate(BaseModel):
@@ -309,6 +311,8 @@ class AdCampaignUpdate(BaseModel):
     notes: Optional[str] = None
     budget_source: Optional[str] = None
     investor_partner_id: Optional[str] = None
+    target_url: Optional[str] = None
+    target_type: Optional[str] = None
 
 
 class AdCampaignOut(BaseModel):
@@ -325,6 +329,9 @@ class AdCampaignOut(BaseModel):
     budget_source: Optional[str] = "account"
     investor_partner_id: Optional[str] = None
     transaction_id: Optional[str] = None
+    utm_code: Optional[str] = None
+    target_url: Optional[str] = None
+    target_type: Optional[str] = None
     created_at: datetime
 
     class Config:

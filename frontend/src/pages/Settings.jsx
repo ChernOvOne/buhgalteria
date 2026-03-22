@@ -3,7 +3,7 @@ import { categoriesAPI, usersAPI, settingsAPI, milestonesAPI, notifChannelsAPI }
 import { fmt, ROLE_LABELS } from '@/utils'
 import { Button, Input, Select, Modal, Table, Tr, Td, Badge, Spinner, Avatar, Textarea } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
-import { Plus, Edit2, Trash2, RefreshCw, Check, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, Copy, RefreshCw, Check, X } from 'lucide-react'
 import { useAuthStore } from '@/store'
 import toast from 'react-hot-toast'
 
@@ -518,6 +518,116 @@ function NotificationsTab() {
   )
 }
 
+
+// ── Docs Tab ──────────────────────────────────────────────────────────────────
+function DocsTab() {
+  const base = window.location.origin
+  const copy = (text) => { navigator.clipboard?.writeText(text); }
+
+  const CodeBlock = ({ code, lang = 'json' }) => (
+    <div className="relative">
+      <pre className="bg-gray-900 text-gray-100 rounded-xl p-4 text-xs font-mono overflow-auto">
+        {code}
+      </pre>
+      <button
+        onClick={() => copy(code)}
+        className="absolute top-2 right-2 text-gray-400 hover:text-white p-1"
+      >
+        <Copy size={12} />
+      </button>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+
+      {/* UTM Lead */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5">
+        <div className="font-medium mb-1">POST /api/utm/lead</div>
+        <div className="text-xs text-gray-400 mb-4">
+          Вызывается когда пользователь заходит в VPN-бот через UTM-ссылку.<br/>
+          Не требует API-ключа. Отправляйте из LEADTEH при старте сценария.
+        </div>
+        <CodeBlock code={`POST ${base}/api/utm/lead
+Content-Type: application/json
+
+{
+  "utm_code": "ad_x7k2m",        // UTM код из рекламной кампании
+  "customer_id": "123456789",    // Telegram ID пользователя
+  "customer_name": "Иван Иванов", // Имя (опционально)
+  "username": "ivan123",          // TG username без @ (опционально)
+  "extra_data": {                 // Любые доп данные (опционально)
+    "source": "leadteh",
+    "scenario": "vpn_start"
+  }
+}`} />
+        <div className="mt-3 text-xs text-gray-500">
+          <b>Ответ при успехе:</b> <code className="bg-gray-100 px-1 rounded">{"{"}"ok": true, "status": "created"{"}"}</code><br/>
+          <b>Ответ при дубле:</b> <code className="bg-gray-100 px-1 rounded">{"{"}"ok": true, "status": "duplicate"{"}"}</code>
+        </div>
+      </div>
+
+      {/* Payment webhook */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5">
+        <div className="font-medium mb-1">POST /api/payments/webhook</div>
+        <div className="text-xs text-gray-400 mb-4">
+          Вызывается при оплате подписки. Требует API-ключ из раздела Платежи → API ключи.<br/>
+          Если customer_id совпадает с лидом — оплата автоматически привяжется к UTM кампании.
+        </div>
+        <CodeBlock code={`POST ${base}/api/payments/webhook
+Content-Type: application/json
+
+{
+  "api_key": "ваш_ключ",           // из раздела Платежи → API ключи
+  "amount": 299.00,                  // сумма в рублях
+  "customer_id": "123456789",        // Telegram ID — связь с UTM лидом
+  "customer_name": "Иван Иванов",
+  "customer_email": "ivan@mail.com", // опционально
+  "plan": "1 месяц VPN",
+  "plan_tag": "1m",                  // 1m | 3m | 6m | 12m
+  "subscription_start": "2026-03-22",
+  "subscription_end": "2026-04-22",
+  "external_id": "PAY-12345",        // ваш ID оплаты (защита от дублей)
+  "source": "leadteh_bot"
+}`} />
+      </div>
+
+      {/* Flow */}
+      <div className="bg-primary-50 border border-primary-100 rounded-xl p-5">
+        <div className="font-medium mb-3 text-primary-600">Полный сценарий LEADTEH</div>
+        <div className="space-y-2 text-sm text-primary-600">
+          {[
+            ['1', 'Создаёте кампанию в разделе Реклама → получаете utm_code'],
+            ['2', 'В LEADTEH добавляете utm_code как стартовый параметр ссылки'],
+            ['3', 'Пользователь кликает на ссылку → ваш сервер фиксирует клик (+1)'],
+            ['4', 'Пользователь открывает бота → LEADTEH шлёт POST /api/utm/lead'],
+            ['5', 'Пользователь оплачивает → LEADTEH шлёт POST /api/payments/webhook'],
+            ['6', 'Система автоматически связывает оплату с кампанией по customer_id'],
+            ['7', 'В разделе Реклама видите: клики → лиды → оплаты → ROI'],
+          ].map(([n, text]) => (
+            <div key={n} className="flex gap-3">
+              <span className="w-5 h-5 rounded-full bg-primary-200 flex items-center justify-center text-xs font-bold flex-shrink-0">{n}</span>
+              <span>{text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* UTM redirect */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5">
+        <div className="font-medium mb-1">GET /go/{'{utm_code}'}</div>
+        <div className="text-xs text-gray-400 mb-2">
+          Редирект-ссылка для рекламы. Фиксирует клик и перенаправляет на целевую страницу.
+        </div>
+        <CodeBlock code={`${base}/go/ad_x7k2m
+// → фиксирует клик
+// → редирект на https://t.me/vpn_bot?start=ad_x7k2m`} />
+      </div>
+
+    </div>
+  )
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 const TABS = [
   { id: 'categories', label: 'Категории' },
@@ -526,6 +636,7 @@ const TABS = [
   { id: 'app',        label: 'Настройки' },
   { id: 'audit',      label: 'Журнал действий' },
   { id: 'notif',      label: 'Уведомления TG' },
+  { id: 'docs',       label: 'Документация API' },
 ]
 
 export default function SettingsPage() {
@@ -564,6 +675,7 @@ export default function SettingsPage() {
         {tab === 'app'        && <AppSettingsTab />}
         {tab === 'audit'      && <AuditTab />}
         {tab === 'notif'      && <NotificationsTab />}
+        {tab === 'docs'       && <DocsTab />}
       </div>
     </div>
   )

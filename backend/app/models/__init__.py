@@ -200,6 +200,10 @@ class AdCampaign(Base):
     budget_source = Column(String(32), default="account", nullable=True)
     investor_partner_id = Column(String, ForeignKey("partners.id"), nullable=True)
     transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)
+    # UTM tracking
+    utm_code = Column(String(32), unique=True, nullable=True, index=True)
+    target_url = Column(Text, nullable=True)   # куда ведёт ссылка (t.me/бот, t.me/канал, URL)
+    target_type = Column(String(16), default="bot", nullable=True)  # bot | channel | custom
     created_by = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -352,6 +356,36 @@ class NotificationChannel(Base):
     notify_ad        = Column(Boolean, default=False)
     notify_server    = Column(Boolean, default=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+# ── UTM Tracking ──────────────────────────────────────────────────────────────
+
+class UtmClick(Base):
+    """Каждый клик по UTM-ссылке /go/{code}"""
+    __tablename__ = "utm_clicks"
+
+    id         = Column(String, primary_key=True, default=gen_uuid)
+    utm_code   = Column(String(32), nullable=False, index=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    referer    = Column(Text, nullable=True)
+    country    = Column(String(8), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UtmLead(Base):
+    """Лид — человек который зашёл через UTM-ссылку (из LEADTEH или бота)"""
+    __tablename__ = "utm_leads"
+
+    id            = Column(String, primary_key=True, default=gen_uuid)
+    utm_code      = Column(String(32), nullable=False, index=True)
+    customer_id   = Column(String(128), nullable=True, index=True)   # Telegram ID
+    customer_name = Column(String(128), nullable=True)
+    username      = Column(String(128), nullable=True)
+    extra_data    = Column(JSON, nullable=True)   # любые доп поля от LEADTEH
+    converted     = Column(Boolean, default=False)  # True если оплатил
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+
 
 class ApiKey(Base):
     __tablename__ = "api_keys"

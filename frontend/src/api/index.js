@@ -159,3 +159,10 @@ export const compareAPI = {
   pdf: (data) => api.post('/compare/pdf', data, { responseType: 'blob' }),
   sendTelegram: (data) => api.post('/compare/send-telegram', data),
 }
+
+// ── UTM ───────────────────────────────────────────────────────────────────────
+export const utmAPI = {
+  stats:   (code)   => api.get(`/api/utm/stats/${code}`),
+  summary: ()       => api.get('/api/utm/summary'),
+  lead:    (data)   => api.post('/api/utm/lead', data),
+}

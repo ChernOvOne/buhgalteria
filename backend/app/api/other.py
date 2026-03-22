@@ -176,9 +176,13 @@ async def create_campaign(
         db.add(inkas)
         await db.flush()
 
+    from app.api.utm import generate_utm_code
     ad_data = data.model_dump()
     ad_data["budget_source"] = budget_source
     ad_data["transaction_id"] = transaction_id
+    # Автогенерация UTM кода если не передан
+    if not ad_data.get("utm_code"):
+        ad_data["utm_code"] = generate_utm_code()
     campaign = AdCampaign(**ad_data, created_by=current_user.id)
     db.add(campaign)
     await db.flush()
@@ -209,7 +213,18 @@ async def create_campaign(
 
     cps = round(campaign.amount / campaign.subscribers_gained, 2) if campaign.subscribers_gained and campaign.subscribers_gained > 0 else None
     return AdCampaignOut.model_validate({
-        **{col.name: getattr(campaign, col.name) for col in campaign.__table__.columns},
+        "id": campaign.id, "date": campaign.date,
+        "channel_name": campaign.channel_name, "channel_url": campaign.channel_url,
+        "format": campaign.format, "amount": campaign.amount,
+        "subscribers_gained": campaign.subscribers_gained,
+        "screenshot_url": campaign.screenshot_url, "notes": campaign.notes,
+        "budget_source": campaign.budget_source,
+        "investor_partner_id": campaign.investor_partner_id,
+        "transaction_id": campaign.transaction_id,
+        "utm_code": campaign.utm_code,
+        "target_url": campaign.target_url,
+        "target_type": campaign.target_type,
+        "created_at": campaign.created_at,
         "cost_per_sub": cps,
     })
 

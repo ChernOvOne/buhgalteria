@@ -16,6 +16,7 @@ from app.api.settings import router as settings_router
 from app.api.payments import router as payments_router
 from app.api.notification_channels import router as notif_router
 from app.api.compare import router as compare_router
+from app.api.utm import router as utm_router
 from app.api.other import (
     servers_router, ads_router, recurring_router,
     dashboard_router, milestones_router, stats_router,
@@ -55,6 +56,11 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS budget_source VARCHAR(32) DEFAULT 'account'",
             "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS investor_partner_id VARCHAR REFERENCES partners(id)",
             "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS transaction_id VARCHAR REFERENCES transactions(id)",
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS utm_code VARCHAR(32)",
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS target_url TEXT",
+            "ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS target_type VARCHAR(16) DEFAULT 'bot'",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS utm_code VARCHAR(32)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_ad_campaigns_utm_code ON ad_campaigns(utm_code) WHERE utm_code IS NOT NULL",
         ]:
             try:
                 await conn.execute(text(sql))
@@ -119,6 +125,8 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")
 app.include_router(notif_router, prefix="/api")
 app.include_router(compare_router, prefix="/api")
+# UTM redirect — без /api prefix (чтобы ссылка была короткой: /go/code)
+app.include_router(utm_router)
 app.include_router(servers_router, prefix="/api")
 app.include_router(ads_router, prefix="/api")
 app.include_router(recurring_router, prefix="/api")

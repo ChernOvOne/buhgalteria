@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { dashboardAPI, reportsAPI, transactionsAPI, paymentsAPI } from '@/api'
+import { dashboardAPI, reportsAPI, transactionsAPI, paymentsAPI, utmAPI } from '@/api'
 import { fmt, fmtDate, fmtDateShort, downloadBlob, today, monthStart, yearStart } from '@/utils'
 import { KpiCard, Badge, Avatar, ProgressBar, Spinner, Button, Modal, Input } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
@@ -150,11 +150,13 @@ export default function Dashboard() {
   const [dayModal, setDayModal]         = useState(null)
   const [reportLoading, setReportLoading] = useState(false)
 
-  const [vpnStats, setVpnStats] = useState(null)
+  const [vpnStats, setVpnStats]     = useState(null)
+  const [utmSummary, setUtmSummary] = useState(null)
 
   const load = useCallback(() => {
     dashboardAPI.get().then(r => setData(r.data)).catch(() => toast.error('Ошибка загрузки'))
     paymentsAPI.stats({}).then(r => setVpnStats(r.data)).catch(() => {})
+    utmAPI.summary().then(r => setUtmSummary(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -439,6 +441,43 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* UTM summary */}
+        {utmSummary && (utmSummary.leads_today > 0 || utmSummary.top_campaigns?.length > 0) && (
+          <div className="bg-white border border-gray-100 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-medium text-gray-500">UTM Аналитика — лиды и конверсии</div>
+              <a href="/ads" className="text-xs text-primary-600 hover:underline">все кампании →</a>
+            </div>
+            <div className="flex gap-3 mb-3">
+              <div className="bg-primary-50 rounded-xl p-2.5 flex-1">
+                <div className="text-xs text-primary-600 mb-0.5">Лидов сегодня</div>
+                <div className="text-xl font-semibold text-primary-600">{utmSummary.leads_today}</div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-2.5 flex-1">
+                <div className="text-xs text-gray-400 mb-0.5">Кликов сегодня</div>
+                <div className="text-xl font-semibold text-gray-700">{utmSummary.clicks_today}</div>
+              </div>
+            </div>
+            {utmSummary.top_campaigns?.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs text-gray-400 mb-1">Топ кампаний (30 дней)</div>
+                {utmSummary.top_campaigns.map((camp, i) => (
+                  <div key={i} className="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                    <div className="w-4 h-4 rounded-full bg-primary-100 flex items-center justify-center text-xs font-medium text-primary-600">{i+1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{camp.campaign_name}</div>
+                    </div>
+                    <div className="text-xs text-gray-400">{camp.leads} лидов</div>
+                    <div className={`text-xs font-medium ${camp.roi > 0 ? 'text-success-600' : 'text-gray-400'}`}>
+                      {camp.roi > 0 ? `ROI +${camp.roi}%` : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
