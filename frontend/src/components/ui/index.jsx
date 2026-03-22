@@ -139,12 +139,12 @@ export function KpiCard({ label, value, sub, subColor, className }) {
 // ── Table ─────────────────────────────────────────────────────────────────────
 export function Table({ headers, children, className }) {
   return (
-    <div className={clsx('overflow-x-auto', className)}>
-      <table className="w-full text-sm">
+    <div className={clsx('overflow-x-auto -mx-0', className)}>
+      <table className="w-full text-sm min-w-max">
         <thead>
           <tr className="border-b border-gray-100">
             {headers.map((h, i) => (
-              <th key={i} className="text-left text-xs font-medium text-gray-400 px-4 py-3 whitespace-nowrap">
+              <th key={i} className="text-left text-xs font-medium text-gray-400 px-3 md:px-4 py-3 whitespace-nowrap">
                 {h}
               </th>
             ))}
@@ -172,7 +172,7 @@ export function Tr({ children, onClick, className }) {
 }
 
 export function Td({ children, className }) {
-  return <td className={clsx('px-4 py-3 text-gray-700', className)}>{children}</td>
+  return <td className={clsx('px-3 md:px-4 py-2.5 md:py-3 text-gray-700', className)}>{children}</td>
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────

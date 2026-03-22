@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from '@/store'
 import { Shell } from '@/components/layout'
@@ -15,17 +15,6 @@ import AdsPage       from '@/pages/Ads'
 import InkasPage     from '@/pages/Inkas'
 import ReportsPage   from '@/pages/Reports'
 import SettingsPage  from '@/pages/Settings'
-
-function AuthGuard({ children }) {
-  const { user, token, loading } = useAuthStore()
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Spinner size={32} />
-    </div>
-  )
-  if (!token || !user) return <Navigate to="/login" replace />
-  return children
-}
 
 function AppShell() {
   return (
@@ -81,4 +70,23 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   )
+}
+
+function AuthGuard({ children }) {
+  const { user, token, loading } = useAuthStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!loading && user && user.onboarding_done === false && window.location.pathname !== '/onboarding') {
+      navigate('/onboarding')
+    }
+  }, [user, loading])
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Spinner size={32} />
+    </div>
+  )
+  if (!token || !user) return <Navigate to="/login" replace />
+  return children
 }

@@ -124,7 +124,7 @@ export default function ServersPage() {
         </div>
       )}
 
-      <div className="p-5">
+      <div className="p-3 md:p-5">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : servers.length === 0 ? (

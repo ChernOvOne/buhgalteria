@@ -44,7 +44,7 @@ export default function ReportsPage() {
     <div>
       <PageHeader title="Отчёты" subtitle="Экспорт финансовых данных" />
 
-      <div className="p-5 space-y-5">
+      <div className="p-3 md:p-5 space-y-4">
 
         {/* Custom period */}
         <div className="bg-white border border-gray-100 rounded-xl p-6">
@@ -64,7 +64,7 @@ export default function ReportsPage() {
         {/* Quick exports */}
         <div className="bg-white border border-gray-100 rounded-xl p-6">
           <div className="text-sm font-medium mb-4">Быстрый экспорт</div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {PRESETS.map(({ label, from, to }) => (
               <div key={label} className="border border-gray-100 rounded-xl p-4">
                 <div className="text-sm font-medium mb-1">{label}</div>

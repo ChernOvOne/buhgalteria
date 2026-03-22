@@ -27,9 +27,20 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
-@router.get("/me", response_model=UserOut)
-async def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+@router.get("/me")
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models import AppSettings
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "onboarding_done")
+    )
+    row = result.scalar_one_or_none()
+    onboarding_done = row.value == "1" if row else False
+    user_data = UserOut.model_validate(current_user).model_dump()
+    user_data["onboarding_done"] = onboarding_done
+    return user_data
 
 
 @router.post("/logout")

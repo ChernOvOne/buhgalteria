@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { dashboardAPI, reportsAPI } from '@/api'
 import { fmt, fmtDate, fmtDateShort, downloadBlob, today, monthStart } from '@/utils'
-import { KpiCard, Badge, Avatar, ProgressBar, Spinner, Button } from '@/components/ui'
+import { KpiCard, Badge, Avatar, ProgressBar, Spinner, Button, Modal } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
 import { PartnerModal } from '@/components/modals'
 import {
@@ -17,59 +17,113 @@ import toast from 'react-hot-toast'
 const PERIOD_LABELS = { today: 'Сегодня', month: 'Месяц', year: 'Год' }
 const CAT_COLORS = ['#534AB7','#1D9E75','#BA7517','#E24B4A','#378ADD','#D4537E','#639922']
 
-// Тепловая карта дохода
-function HeatMap({ data }) {
-  if (!data || data.length === 0) return null
+// Модал транзакций за день при клике на тепловую карту
+function DayTransactionsModal({ date, amount, onClose }) {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    import('@/api').then(({ transactionsAPI }) => {
+      transactionsAPI.list({ date_from: date, date_to: date, limit: 100 })
+        .then(r => setItems(r.data))
+        .finally(() => setLoading(false))
+    })
+  }, [date])
+
+  const income  = items.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0)
+  const expense = items.filter(t => t.type === 'expense').reduce((s,t) => s+t.amount, 0)
+
+  return (
+    <Modal open onClose={onClose} title={`Транзакции за ${fmtDate(date)}`} size="md">
+      <div className="flex gap-3 mb-4">
+        <div className="flex-1 bg-success-50 rounded-xl p-3">
+          <div className="text-xs text-success-600 mb-0.5">Доход</div>
+          <div className="font-medium text-success-600">{fmt(income)}</div>
+        </div>
+        <div className="flex-1 bg-danger-50 rounded-xl p-3">
+          <div className="text-xs text-danger-600 mb-0.5">Расход</div>
+          <div className="font-medium text-danger-600">{fmt(expense)}</div>
+        </div>
+        <div className="flex-1 bg-gray-50 rounded-xl p-3">
+          <div className="text-xs text-gray-500 mb-0.5">Прибыль</div>
+          <div className="font-medium">{fmt(income - expense)}</div>
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-6"><Spinner /></div>
+      ) : items.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-6">Нет транзакций</div>
+      ) : (
+        <div className="space-y-1">
+          {items.map(t => (
+            <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+              <div className={`w-1.5 h-5 rounded-full flex-shrink-0 ${t.type === 'income' ? 'bg-success-600' : 'bg-danger-600'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm truncate">{t.description || t.category?.name || (t.type === 'income' ? 'Доход' : 'Расход')}</div>
+                {t.category && <div className="text-xs text-gray-400">{t.category.name}</div>}
+              </div>
+              <div className={`text-sm font-medium ${t.type === 'income' ? 'text-success-600' : 'text-danger-600'}`}>
+                {t.type === 'income' ? '+' : '-'}{fmt(t.amount)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// Тепловая карта дохода — компактная, клик по дню
+function HeatMap({ data, onDayClick }) {
+  if (!data || data.length === 0) return (
+    <div className="text-xs text-gray-300 text-center py-4">Нет данных за текущий месяц</div>
+  )
 
   const byDate = {}
   data.forEach((d) => { byDate[d.date] = d.amount })
   const max = Math.max(...Object.values(byDate), 1)
 
-  const year = new Date().getFullYear()
-  const month = new Date().getMonth()
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = today.getMonth()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const dayOffset = (new Date(year, month, 1).getDay() + 6) % 7
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const d = new Date(year, month, i + 1)
     const key = d.toISOString().slice(0, 10)
     const amount = byDate[key] || 0
-    const intensity = max > 0 ? amount / max : 0
-    return { day: i + 1, amount, intensity, date: key }
+    return { day: i + 1, amount, intensity: amount / max, date: key }
   })
 
   const getColor = (intensity) => {
     if (intensity === 0) return '#F1EFE8'
-    const alpha = 0.15 + intensity * 0.85
-    return `rgba(83,74,183,${alpha.toFixed(2)})`
+    return `rgba(83,74,183,${(0.12 + intensity * 0.88).toFixed(2)})`
   }
 
   return (
     <div>
-      <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
         {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((d) => (
-          <div key={d} className="text-center text-xs text-gray-300 pb-1">{d}</div>
+          <div key={d} className="text-center text-gray-300 pb-0.5" style={{fontSize:'9px'}}>{d}</div>
         ))}
-        {/* Пустые ячейки до первого числа */}
-        {Array.from({ length: (new Date(year, month, 1).getDay() + 6) % 7 }, (_, i) => (
-          <div key={'e'+i} />
-        ))}
+        {Array.from({ length: dayOffset }, (_, i) => <div key={"e"+i} />)}
         {days.map(({ day, amount, intensity, date }) => (
           <div
             key={day}
-            title={`${fmtDate(date)}: ${fmt(amount)}`}
-            className="aspect-square rounded flex items-center justify-center text-xs cursor-default transition-all"
-            style={{ background: getColor(intensity), color: intensity > 0.6 ? 'white' : '#534AB7' }}
-          >
-            {day}
-          </div>
+            title={`${date}: ${fmt(amount)}`}
+            onClick={() => amount > 0 && onDayClick?.(date, amount)}
+            className={`rounded-sm transition-all ${amount > 0 ? 'cursor-pointer hover:ring-1 hover:ring-primary-400 hover:scale-110' : ''}`}
+            style={{ background: getColor(intensity), aspectRatio: '1', minHeight: '12px' }}
+          />
         ))}
       </div>
-      <div className="flex items-center gap-2 mt-2 justify-end">
-        <span className="text-xs text-gray-400">0</span>
-        {[0.15,0.35,0.55,0.75,1].map((v, i) => (
-          <div key={i} className="w-4 h-4 rounded" style={{ background: getColor(v) }} />
+      <div className="flex items-center gap-1 mt-2 justify-end">
+        <span style={{fontSize:'9px'}} className="text-gray-300">меньше</span>
+        {[0,0.25,0.5,0.75,1].map((v,i) => (
+          <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{background: getColor(v)}} />
         ))}
-        <span className="text-xs text-gray-400">{fmt(max)}</span>
+        <span style={{fontSize:'9px'}} className="text-gray-300">больше</span>
       </div>
     </div>
   )
@@ -92,6 +146,7 @@ export default function Dashboard() {
   const [data, setData] = useState(null)
   const [period, setPeriod] = useState('month')
   const [partnerModal, setPartnerModal] = useState(null)
+  const [dayModal, setDayModal] = useState(null) // { date, amount }
   const [reportLoading, setReportLoading] = useState(false)
 
   useEffect(() => {
@@ -121,7 +176,7 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader title="Дашборд" subtitle="Финансовый обзор">
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex gap-0.5 bg-gray-100 rounded-lg p-1">
           {Object.entries(PERIOD_LABELS).map(([k, v]) => (
             <button
               key={k}
@@ -142,10 +197,10 @@ export default function Dashboard() {
         </Button>
       </PageHeader>
 
-      <div className="p-5 space-y-4">
+      <div className="p-3 md:p-5 space-y-3 md:space-y-4">
 
         {/* KPI Row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 md:gap-3">
           <KpiCard
             label="Выручка"
             value={fmt(kpi.income)}
@@ -179,8 +234,8 @@ export default function Dashboard() {
         </div>
 
         {/* Chart + Categories */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2 bg-white border border-gray-100 rounded-xl p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="lg:col-span-2 bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs font-medium text-gray-500 mb-3">График выручки (30 дней)</div>
             <ResponsiveContainer width="100%" height={160}>
               <AreaChart data={data.income_chart} margin={{ left: -10 }}>
@@ -227,35 +282,49 @@ export default function Dashboard() {
         {/* Heatmap */}
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <div className="text-xs font-medium text-gray-500 mb-3">Тепловая карта дохода (текущий месяц)</div>
-          <HeatMap data={data.income_chart} />
+          <HeatMap data={data.income_chart} onDayClick={(date, amount) => setDayModal({ date, amount })} />
         </div>
 
         {/* Partners + Servers + Ads */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
 
-          {/* Partners */}
+          {/* Partners */
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs font-medium text-gray-500 mb-3">Партнёры</div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {data.partners_summary.map((p) => (
                 <div
                   key={p.id}
                   onClick={() => setPartnerModal(p.id)}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors border border-gray-50"
                 >
-                  <Avatar name={p.name} color={p.avatar_color} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{p.name}</div>
-                    <div className="text-xs text-gray-400">{p.role_label}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-success-600">
-                      {p.last_dividend ? fmt(p.last_dividend) : '—'}
+                  <div className="flex items-center gap-2 mb-2">
+                    <Avatar name={p.initials || p.name} color={p.avatar_color} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-gray-400">{p.role_label}</div>
                     </div>
-                    {p.remaining_debt > 0 && (
-                      <div className="text-xs text-warn-600">{fmt(p.remaining_debt)} долг</div>
-                    )}
+                    <div className="text-right">
+                      <div className="text-xs font-medium text-success-600">
+                        ДВД: {p.total_dividends ? fmt(p.total_dividends) : '—'}
+                      </div>
+                    </div>
                   </div>
+                  {p.total_invested > 0 && (
+                    <div>
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Возврат инвест.</span>
+                        <span className={p.remaining_debt > 0 ? 'text-warn-600' : 'text-success-600'}>
+                          {p.remaining_debt > 0 ? `осталось ${fmt(p.remaining_debt)}` : '✓ погашено'}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        value={p.total_returned}
+                        max={p.total_invested}
+                        color={p.remaining_debt > 0 ? '#BA7517' : '#1D9E75'}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -315,7 +384,7 @@ export default function Dashboard() {
         {data.milestones?.length > 0 && (
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs font-medium text-gray-500 mb-3">Цели</div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {data.milestones.map((m) => (
                 <div key={m.id}>
                   <div className="flex justify-between text-xs mb-1.5">
@@ -356,6 +425,13 @@ export default function Dashboard() {
 
       {partnerModal && (
         <PartnerModal partnerId={partnerModal} onClose={() => setPartnerModal(null)} />
+      )}
+      {dayModal && (
+        <DayTransactionsModal
+          date={dayModal.date}
+          amount={dayModal.amount}
+          onClose={() => setDayModal(null)}
+        />
       )}
     </div>
   )

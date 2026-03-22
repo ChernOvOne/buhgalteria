@@ -124,7 +124,7 @@ export default function PartnersPage() {
         )}
       </PageHeader>
 
-      <div className="p-5">
+      <div className="p-3 md:p-5">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : partners.length === 0 ? (
@@ -132,7 +132,7 @@ export default function PartnersPage() {
             isAdmin() && <Button variant="primary" size="sm" className="mt-3" onClick={() => setModal('add')}><Plus size={13} />Добавить</Button>
           } />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {partners.map(p => (
               <div
                 key={p.id}

@@ -71,7 +71,7 @@ export default function InkasPage() {
         )}
       </PageHeader>
 
-      <div className="grid grid-cols-3 gap-3 p-5 pb-0">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3 p-3 md:p-5 pb-0">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Дивиденды (всего)</div>
           <div className="text-xl font-medium text-success-600">{fmt(totalDvd)}</div>
@@ -86,7 +86,7 @@ export default function InkasPage() {
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-3 md:p-5">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : records.length === 0 ? (

@@ -398,6 +398,8 @@ async def get_dashboard(
         last_dvd = last_dvd_r.scalar_one_or_none()
         total_invested = p.initial_investment
         total_returned = p.initial_returned
+        total_dividends = p.initial_dividends
+
         invest_r = await db.execute(
             select(func.sum(InkasRecord.amount))
             .where(and_(InkasRecord.partner_id == p.id, InkasRecord.type == InkasType.investment))
@@ -406,8 +408,13 @@ async def get_dashboard(
             select(func.sum(InkasRecord.amount))
             .where(and_(InkasRecord.partner_id == p.id, InkasRecord.type == InkasType.return_inv))
         )
+        dvd_r = await db.execute(
+            select(func.sum(InkasRecord.amount))
+            .where(and_(InkasRecord.partner_id == p.id, InkasRecord.type == InkasType.dividend))
+        )
         total_invested += float(invest_r.scalar() or 0)
         total_returned += float(ret_r.scalar() or 0)
+        total_dividends += float(dvd_r.scalar() or 0)
 
         partners_summary.append({
             "id": p.id,
@@ -417,7 +424,10 @@ async def get_dashboard(
             "initials": p.initials,
             "last_dividend": last_dvd.amount if last_dvd else None,
             "last_dividend_date": str(last_dvd.date) if last_dvd else None,
-            "remaining_debt": max(0, total_invested - total_returned),
+            "remaining_debt": max(0.0, total_invested - total_returned),
+            "total_invested": total_invested,
+            "total_returned": total_returned,
+            "total_dividends": total_dividends,
         })
 
     # Серверы требующие внимания

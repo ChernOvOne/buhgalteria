@@ -83,7 +83,7 @@ function TransactionForm({ initial, categories, onSave, onClose, typeFixed }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
           label="Сумма ₽"
           type="number"
@@ -211,7 +211,7 @@ export function TransactionsPage({ typeFixed }) {
       </PageHeader>
 
       {/* Filters */}
-      <div className="flex gap-3 p-4 bg-white border-b border-gray-100 flex-wrap">
+      <div className="flex gap-2 p-3 md:p-4 bg-white border-b border-gray-100 flex-wrap">
         <Input
           placeholder="Поиск..."
           value={filters.search}

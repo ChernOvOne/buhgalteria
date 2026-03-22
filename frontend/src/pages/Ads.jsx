@@ -104,7 +104,7 @@ export default function AdsPage() {
 
       {/* Summary */}
       {summary && (
-        <div className="grid grid-cols-4 gap-3 p-5 pb-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 p-3 md:p-5 pb-0">
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="text-xs text-gray-400 mb-1">Потрачено</div>
             <div className="text-xl font-medium">{fmt(summary.total_spent)}</div>
@@ -130,12 +130,12 @@ export default function AdsPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 p-5 pb-0">
+      <div className="flex gap-2 p-3 md:p-5 pb-0 flex-wrap">
         <Input type="date" value={filters.date_from} onChange={e => setFilters(f => ({ ...f, date_from: e.target.value }))} className="w-36" />
         <Input type="date" value={filters.date_to} onChange={e => setFilters(f => ({ ...f, date_to: e.target.value }))} className="w-36" />
       </div>
 
-      <div className="p-5">
+      <div className="p-3 md:p-5">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : campaigns.length === 0 ? (
