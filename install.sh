@@ -8,18 +8,10 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${BLUE}[→]${NC} $1"; }
+ask()  { read -p "  $1" "$2" </dev/tty; }
 
 INSTALL_DIR="/opt/buhgalteria"
 REPO_URL="https://github.com/ChernOvOne/buhgalteria.git"
-SCRIPT_URL="https://raw.githubusercontent.com/ChernOvOne/buhgalteria/main/install.sh"
-
-# Если запущен через pipe и это НЕ повторный запуск — скачиваем и перезапускаем
-if [ ! -t 0 ] && [ "$1" != "--tty" ]; then
-    echo "Скачиваем установщик..."
-    curl -fsSL "$SCRIPT_URL" -o /tmp/buh_install.sh
-    chmod +x /tmp/buh_install.sh
-    exec bash /tmp/buh_install.sh --tty
-fi
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
@@ -81,17 +73,17 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     sed -i "s/your-very-long-secret-key-change-this-in-production/$SECRET_KEY/" .env
 
     echo ""
-    read -p "  Введите домен или IP сервера: " DOMAIN
+    ask "Введите домен или IP сервера: " DOMAIN
     DOMAIN="${DOMAIN:-localhost}"
     sed -i "s/yourdomain.com/$DOMAIN/" .env
 
     echo ""
-    read -p "  Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
+    ask "Telegram Bot Token (Enter чтобы пропустить): " TG_TOKEN
     if [ -n "$TG_TOKEN" ]; then
         sed -i "s|^TG_BOT_TOKEN=.*|TG_BOT_TOKEN=$TG_TOKEN|" .env
-        read -p "  Telegram Channel ID для отчётов: " TG_CHAN
+        ask "Telegram Channel ID для отчётов: " TG_CHAN
         [ -n "$TG_CHAN" ] && sed -i "s|^TG_CHANNEL_ID=.*|TG_CHANNEL_ID=$TG_CHAN|" .env
-        read -p "  Ваш Telegram User ID: " TG_ADMIN
+        ask "Ваш Telegram User ID: " TG_ADMIN
         [ -n "$TG_ADMIN" ] && sed -i "s|^TG_ADMIN_ID=.*|TG_ADMIN_ID=$TG_ADMIN|" .env
     fi
     log ".env создан"
@@ -126,7 +118,7 @@ for i in $(seq 1 40); do
     fi
     printf "."
     sleep 3
-    [ "$i" -eq 40 ] && echo "" && warn "Backend долго стартует — проверьте: docker compose logs backend"
+    [ "$i" -eq 40 ] && echo "" && warn "Проверьте логи: docker compose logs backend"
 done
 echo ""
 
@@ -135,9 +127,9 @@ if [[ "$DOMAIN_VAL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$DOMAIN_VAL" = 
     warn "IP/localhost — SSL пропускается"
 else
     echo ""
-    read -p "  Установить SSL (Let's Encrypt) для $DOMAIN_VAL? [y/N]: " INSTALL_SSL
+    ask "Установить SSL (Let's Encrypt) для $DOMAIN_VAL? [y/N]: " INSTALL_SSL
     if [[ "$INSTALL_SSL" =~ ^[Yy]$ ]]; then
-        read -p "  Email для SSL: " SSL_EMAIL
+        ask "Email для SSL: " SSL_EMAIL
         mkdir -p /var/www/certbot
         if certbot certonly --webroot -w /var/www/certbot \
             -d "$DOMAIN_VAL" --non-interactive --agree-tos -m "$SSL_EMAIL"; then
