@@ -24,7 +24,8 @@ echo ""
 # ── Если уже установлено — чистим полностью ───────────────────────────────────
 if [ -d "$INSTALL_DIR" ]; then
     warn "Найдена предыдущая установка — удаляем..."
-    cd "$INSTALL_DIR" 2>/dev/null && docker compose down --volumes --remove-orphans 2>/dev/null || true
+    cd /root
+    docker compose -f "$INSTALL_DIR/docker-compose.yml" down --volumes --remove-orphans 2>/dev/null || true
     rm -rf "$INSTALL_DIR"
     log "Старая установка удалена"
 fi
