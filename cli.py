@@ -60,11 +60,43 @@ def restart():
 
 def update():
     print(c(BLUE, "→") + " Обновление из репозитория...")
-    run("git stash", check=False)
-    run("git pull origin main")
-    run("git stash pop", check=False)
+
+    # Сохраняем SSL-конфиг если он настроен (содержит ssl_certificate)
+    nginx_conf = f"{INSTALL_DIR}/nginx/nginx.conf"
+    ssl_backup = None
+    try:
+        with open(nginx_conf) as f:
+            content = f.read()
+        if "ssl_certificate" in content:
+            ssl_backup = content
+            print(c(YELLOW, "!") + " SSL-конфиг сохранён, будет восстановлен после обновления")
+    except FileNotFoundError:
+        pass
+
+    # Сбрасываем все конфликты и локальные изменения
+    run("git merge --abort", check=False)
+    run("git checkout -- .", check=False)
+    run("git clean -fd", check=False)
+
+    # Забираем обновления
+    result = run("git pull origin main", check=False)
+    if result.returncode != 0:
+        print(c(RED, "✗") + " Git pull не удался. Пробуем жёсткий сброс...")
+        run("git fetch origin main", check=False)
+        run("git reset --hard origin/main", check=False)
+
+    # Восстанавливаем SSL-конфиг
+    if ssl_backup:
+        with open(nginx_conf, "w") as f:
+            f.write(ssl_backup)
+        print(c(GREEN, "✓") + " SSL-конфиг восстановлен")
+
     print(c(BLUE, "→") + " Пересборка backend и frontend...")
     run(f"{COMPOSE} up -d --build --no-deps backend frontend")
+
+    # Перезапуск nginx (применить обновлённый конфиг)
+    run(f"{COMPOSE} restart nginx", check=False)
+
     # Всегда пересобираем бота если токен задан
     token_val = _get_env("TG_BOT_TOKEN", "")
     if token_val:
@@ -252,18 +284,22 @@ def versions():
 
     if selected == "latest":
         print(c(BLUE, "→") + " Обновление до последней версии...")
-        run("git stash", check=False)
+        run("git merge --abort", check=False)
+        run("git checkout -- .", check=False)
         run("git checkout main", check=False)
-        run("git pull origin main")
-        run("git stash pop", check=False)
+        result = run("git pull origin main", check=False)
+        if result.returncode != 0:
+            run("git fetch origin main", check=False)
+            run("git reset --hard origin/main", check=False)
     else:
         confirm = input(f"  Переключиться на {c(BOLD, selected)}? [y/N]: ").strip()
         if confirm.lower() != "y":
             print("Отменено")
             return
         print(c(BLUE, "→") + f" Переключаемся на {selected}...")
-        run("git stash", check=False)
-        run(f"git checkout {selected}")
+        run("git merge --abort", check=False)
+        run("git checkout -- .", check=False)
+        run(f"git checkout {selected}", check=False)
 
     print(c(BLUE, "→") + " Пересборка сервисов...")
     run(f"{COMPOSE} up -d --build --no-deps backend frontend")
