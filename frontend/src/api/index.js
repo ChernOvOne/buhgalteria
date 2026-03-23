@@ -162,7 +162,7 @@ export const compareAPI = {
 
 // ── UTM ───────────────────────────────────────────────────────────────────────
 export const utmAPI = {
-  stats:   (code)   => api.get(`/api/utm/stats/${code}`),
-  summary: ()       => api.get('/api/utm/summary'),
-  lead:    (data)   => api.post('/api/utm/lead', data),
+  stats:   (code)   => api.get(`/utm/stats/${code}`),
+  summary: ()       => api.get('/utm/summary'),
+  lead:    (data)   => api.post('/utm/lead', data),
 }

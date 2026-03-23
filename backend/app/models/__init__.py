@@ -332,6 +332,7 @@ class Payment(Base):
     transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)
 
     date       = Column(Date, nullable=False)
+    utm_code   = Column(String(32), nullable=True)   # UTM код привлечения
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     api_key     = relationship("ApiKey",     foreign_keys=[api_key_id])

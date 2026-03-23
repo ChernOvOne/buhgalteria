@@ -121,7 +121,7 @@ async def receive_payment(
         date=today_date,
     )
     db.add(payment)
-    await db.commit()
+    await db.flush()
 
     # Ищем UTM-лида по customer_id и связываем
     if payload.customer_id:
@@ -139,6 +139,8 @@ async def receive_payment(
                 payment.utm_code = lead.utm_code
         except Exception:
             pass
+
+    await db.commit()
 
     # Уведомление
     try:
@@ -232,6 +234,7 @@ def _payment_dict(p: Payment) -> dict:
         "sub_end": str(p.sub_end) if p.sub_end else None,
         "description": p.description,
         "source": p.source,
+        "utm_code": p.utm_code,
         "date": str(p.date),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
