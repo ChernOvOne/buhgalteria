@@ -177,13 +177,42 @@ async def create_campaign(
         await db.flush()
 
     from app.api.utm import generate_utm_code
-    ad_data = data.model_dump()
-    ad_data["budget_source"] = budget_source
-    ad_data["transaction_id"] = transaction_id
-    # Автогенерация UTM кода если не передан
-    if not ad_data.get("utm_code"):
-        ad_data["utm_code"] = generate_utm_code()
-    campaign = AdCampaign(**ad_data, created_by=current_user.id)
+    utm_code = generate_utm_code()
+
+    try:
+        campaign = AdCampaign(
+            date=data.date,
+            channel_name=data.channel_name,
+            channel_url=data.channel_url,
+            format=data.format,
+            amount=data.amount,
+            subscribers_gained=data.subscribers_gained,
+            screenshot_url=data.screenshot_url,
+            notes=data.notes,
+            budget_source=budget_source,
+            investor_partner_id=data.investor_partner_id,
+            transaction_id=transaction_id,
+            utm_code=utm_code,
+            target_url=data.target_url,
+            target_type=data.target_type or "bot",
+            created_by=current_user.id,
+        )
+    except Exception:
+        # Фоллбек — без новых UTM полей если колонок ещё нет
+        campaign = AdCampaign(
+            date=data.date,
+            channel_name=data.channel_name,
+            channel_url=data.channel_url,
+            format=data.format,
+            amount=data.amount,
+            subscribers_gained=data.subscribers_gained,
+            screenshot_url=data.screenshot_url,
+            notes=data.notes,
+            budget_source=budget_source,
+            investor_partner_id=data.investor_partner_id,
+            transaction_id=transaction_id,
+            created_by=current_user.id,
+        )
     db.add(campaign)
     await db.flush()
     await db.refresh(campaign)
