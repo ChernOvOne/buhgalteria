@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { dashboardAPI, reportsAPI, transactionsAPI, paymentsAPI, utmAPI } from '@/api'
+import { dashboardAPI, reportsAPI, transactionsAPI, paymentsAPI, utmAPI, customersAPI, adsAPI } from '@/api'
 import { fmt, fmtDate, fmtDateShort, downloadBlob, today, monthStart, yearStart } from '@/utils'
 import { KpiCard, Badge, Avatar, ProgressBar, Spinner, Button, Modal, Input } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
@@ -152,11 +152,15 @@ export default function Dashboard() {
 
   const [vpnStats, setVpnStats]     = useState(null)
   const [utmSummary, setUtmSummary] = useState(null)
+  const [customerStats, setCustomerStats] = useState(null)
+  const [funnelData, setFunnelData] = useState(null)
 
   const load = useCallback(() => {
     dashboardAPI.get().then(r => setData(r.data)).catch(() => toast.error('Ошибка загрузки'))
     paymentsAPI.stats({}).then(r => setVpnStats(r.data)).catch(() => {})
     utmAPI.summary().then(r => setUtmSummary(r.data)).catch(() => {})
+    customersAPI.stats().then(r => setCustomerStats(r.data)).catch(() => {})
+    adsAPI.funnel({}).then(r => setFunnelData(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -444,42 +448,96 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* UTM summary */}
-        {utmSummary && (
+        {/* Marketing funnel + Customer stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Funnel */}
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-medium text-gray-500">UTM Аналитика — лиды и конверсии</div>
-              <a href="/ads" className="text-xs text-primary-600 hover:underline">все кампании →</a>
+              <div className="text-xs font-medium text-gray-500">Воронка маркетинга</div>
+              <a href="/ads" className="text-xs text-primary-600 hover:underline">подробнее →</a>
             </div>
-            <div className="flex gap-3 mb-3">
-              <div className="bg-primary-50 rounded-xl p-2.5 flex-1">
-                <div className="text-xs text-primary-600 mb-0.5">Лидов сегодня</div>
-                <div className="text-xl font-semibold text-primary-600">{utmSummary.leads_today}</div>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-2.5 flex-1">
-                <div className="text-xs text-gray-400 mb-0.5">Кликов сегодня</div>
-                <div className="text-xl font-semibold text-gray-700">{utmSummary.clicks_today}</div>
-              </div>
-            </div>
-            {utmSummary.top_campaigns?.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-xs text-gray-400 mb-1">Топ кампаний (30 дней)</div>
-                {utmSummary.top_campaigns.map((camp, i) => (
-                  <div key={i} className="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
-                    <div className="w-4 h-4 rounded-full bg-primary-100 flex items-center justify-center text-xs font-medium text-primary-600">{i+1}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm truncate">{camp.campaign_name}</div>
+            {funnelData?.totals ? (
+              <div>
+                <div className="flex gap-2 mb-3">
+                  {[
+                    { label: 'Клики', value: funnelData.totals.clicks, color: 'bg-gray-50', textColor: 'text-gray-700' },
+                    { label: 'Лиды', value: funnelData.totals.leads, color: 'bg-primary-50', textColor: 'text-primary-600', pct: funnelData.totals.click_to_lead },
+                    { label: 'Оплаты', value: funnelData.totals.converted, color: 'bg-success-50', textColor: 'text-success-600', pct: funnelData.totals.lead_to_pay },
+                  ].map((item, i) => (
+                    <div key={i} className={`flex-1 ${item.color} rounded-xl p-2.5 text-center`}>
+                      <div className={`text-xl font-semibold ${item.textColor}`}>{item.value}</div>
+                      <div className="text-xs text-gray-400">
+                        {item.label}
+                        {item.pct > 0 && <span className={`ml-1 ${item.textColor}`}>({item.pct}%)</span>}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400">{camp.leads} лидов</div>
-                    <div className={`text-xs font-medium ${camp.roi > 0 ? 'text-success-600' : 'text-gray-400'}`}>
-                      {camp.roi > 0 ? `ROI +${camp.roi}%` : '—'}
-                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Потрачено: <span className="font-medium text-gray-600">{fmt(funnelData.totals.spent)}</span></span>
+                  <span>ROI: <span className={`font-medium ${funnelData.totals.roi > 0 ? 'text-success-600' : 'text-danger-600'}`}>
+                    {funnelData.totals.roi > 0 ? '+' : ''}{funnelData.totals.roi}%
+                  </span></span>
+                </div>
+                {utmSummary && (
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                    <div className="text-xs text-gray-400">Сегодня: <span className="font-medium text-primary-600">{utmSummary.clicks_today} кликов</span>, <span className="font-medium text-success-600">{utmSummary.leads_today} лидов</span></div>
                   </div>
-                ))}
+                )}
               </div>
+            ) : (
+              <div className="text-xs text-gray-300 text-center py-6">Создайте первую кампанию в разделе <a href="/ads" className="text-primary-400 hover:underline">Маркетинг</a></div>
             )}
           </div>
-        )}
+
+          {/* Customer stats */}
+          <div className="bg-white border border-gray-100 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-medium text-gray-500">Клиентская база</div>
+              <a href="/customers" className="text-xs text-primary-600 hover:underline">все клиенты →</a>
+            </div>
+            {customerStats ? (
+              <div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-primary-50 rounded-xl p-2.5">
+                    <div className="text-xs text-primary-600 mb-0.5">Всего клиентов</div>
+                    <div className="text-xl font-semibold text-primary-600">{customerStats.total_customers}</div>
+                  </div>
+                  <div className="bg-success-50 rounded-xl p-2.5">
+                    <div className="text-xs text-success-600 mb-0.5">Оплатили</div>
+                    <div className="text-xl font-semibold text-success-600">{customerStats.paid_customers}</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Конверсия в оплату</span>
+                    <span className="font-medium text-primary-600">{customerStats.conversion_rate}%</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Средний LTV</span>
+                    <span className="font-medium text-success-600">{fmt(customerStats.avg_ltv)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Retention</span>
+                    <span className={`font-medium ${customerStats.retention_rate >= 50 ? 'text-success-600' : 'text-warn-600'}`}>{customerStats.retention_rate}%</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Активных подписок</span>
+                    <span className="font-medium text-gray-700">{customerStats.active_subscriptions}</span>
+                  </div>
+                  {customerStats.expiring_soon > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-warn-600">Истекают через 3 дня</span>
+                      <span className="font-medium text-warn-600">{customerStats.expiring_soon}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-300 text-center py-6">Клиенты появятся после первого лида или платежа</div>
+            )}
+          </div>
+        </div>
 
         {/* Recent: Transactions + Payments */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

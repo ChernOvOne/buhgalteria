@@ -17,6 +17,7 @@ from app.api.payments import router as payments_router
 from app.api.notification_channels import router as notif_router
 from app.api.compare import router as compare_router
 from app.api.utm import router as utm_router
+from app.api.customers import router as customers_router
 from app.api.other import (
     servers_router, ads_router, recurring_router,
     dashboard_router, milestones_router, stats_router,
@@ -133,6 +134,7 @@ app.include_router(recurring_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(milestones_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
+app.include_router(customers_router, prefix="/api")
 
 
 @app.get("/api/health")

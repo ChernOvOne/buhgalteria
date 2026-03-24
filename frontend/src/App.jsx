@@ -16,6 +16,7 @@ import InkasPage     from '@/pages/Inkas'
 import ReportsPage   from '@/pages/Reports'
 import SettingsPage  from '@/pages/Settings'
 import PaymentsPage  from '@/pages/Payments'
+import CustomersPage from '@/pages/Customers'
 import ComparePage   from '@/pages/Compare'
 
 function AppShell() {
@@ -27,6 +28,7 @@ function AppShell() {
           <Route path="/income"   element={<TransactionsPage typeFixed="income" />} />
           <Route path="/expenses" element={<TransactionsPage typeFixed="expense" />} />
           <Route path="/ads"      element={<AdsPage />} />
+          <Route path="/customers" element={<CustomersPage />} />
           <Route path="/servers"  element={<ServersPage />} />
           <Route path="/partners" element={<PartnersPage />} />
           <Route path="/inkas"    element={<InkasPage />} />

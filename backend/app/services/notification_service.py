@@ -192,3 +192,27 @@ def format_ad(
         f"\n<i>{company}</i>",
     ]
     return "\n".join(lines)
+
+
+def format_conversion(
+    campaign_name: str,
+    customer_name: Optional[str],
+    username: Optional[str],
+    amount: float,
+    plan: Optional[str],
+    roi: float,
+    company: str = "Бухгалтерия",
+) -> str:
+    lines = [
+        f"🎯 <b>Конверсия UTM!</b>",
+        f"Кампания: {campaign_name}",
+        f"Клиент: @{username or '—'} ({customer_name or '—'})",
+        f"Сумма: <b>{fmt(amount)}</b>",
+    ]
+    if plan:
+        lines.append(f"Тариф: {plan}")
+    if roi != 0:
+        sign = "+" if roi > 0 else ""
+        lines.append(f"ROI кампании: <b>{sign}{roi}%</b>")
+    lines.append(f"\n<i>{company}</i>")
+    return "\n".join(lines)

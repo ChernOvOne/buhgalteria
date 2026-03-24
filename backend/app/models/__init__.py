@@ -388,6 +388,45 @@ class UtmLead(Base):
 
 
 
+# ── Customer (единая карточка клиента) ────────────────────────────────────────
+
+class Customer(Base):
+    """Клиент VPN-сервиса — объединяет telegram_id из лидов и платежей"""
+    __tablename__ = "customers"
+
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    telegram_id     = Column(String(32), unique=True, nullable=False, index=True)
+    telegram_username = Column(String(128), nullable=True)
+    full_name       = Column(String(128), nullable=True)
+
+    # UTM / Реклама
+    utm_code        = Column(String(32), nullable=True, index=True)   # из какой кампании пришёл
+    source          = Column(String(64), nullable=True)               # leadtex / direct / referral
+
+    # Реферальная система
+    referrer_id     = Column(String, ForeignKey("customers.id"), nullable=True)
+    referral_code   = Column(String(32), unique=True, nullable=True)  # свой реферальный код
+
+    # Финансы (агрегаты — обновляются при каждом платеже)
+    total_paid      = Column(Float, default=0.0)           # LTV
+    payments_count  = Column(Integer, default=0)
+    last_payment_at = Column(DateTime(timezone=True), nullable=True)
+    current_plan    = Column(String(64), nullable=True)    # "3 месяца VPN"
+    current_plan_tag = Column(String(32), nullable=True)   # "3m"
+
+    # Статус подписки (обновляется при синхронизации / оплате)
+    subscription_start = Column(Date, nullable=True)
+    subscription_end   = Column(Date, nullable=True)
+
+    # Мета
+    first_seen_at   = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at    = Column(DateTime(timezone=True), nullable=True)
+    is_active       = Column(Boolean, default=True)
+    notes           = Column(Text, nullable=True)
+
+    referrer        = relationship("Customer", remote_side="Customer.id", foreign_keys=[referrer_id])
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 

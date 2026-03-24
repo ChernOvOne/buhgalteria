@@ -87,6 +87,15 @@ export const adsAPI = {
   update: (id, data) => api.patch(`/ads/${id}`, data),
   delete: (id) => api.delete(`/ads/${id}`),
   summary: (params) => api.get('/ads/summary', { params }),
+  funnel: (params) => api.get('/ads/funnel', { params }),
+}
+
+// ── Customers ─────────────────────────────────────────────────────────────────
+export const customersAPI = {
+  list: (params) => api.get('/customers/', { params }),
+  get: (id) => api.get(`/customers/${id}`),
+  update: (id, data) => api.patch(`/customers/${id}`, data),
+  stats: () => api.get('/customers/stats'),
 }
 
 // ── Recurring ─────────────────────────────────────────────────────────────────

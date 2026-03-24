@@ -489,4 +489,46 @@ class OnboardingData(BaseModel):
     tg_admin_id: Optional[str] = None
 
 
+# ── Customer ───────────────────────────────────────────────────────────────────
+
+class CustomerOut(BaseModel):
+    id: str
+    telegram_id: str
+    telegram_username: Optional[str]
+    full_name: Optional[str]
+    utm_code: Optional[str]
+    source: Optional[str]
+    referral_code: Optional[str]
+    total_paid: float
+    payments_count: int
+    last_payment_at: Optional[datetime]
+    current_plan: Optional[str]
+    current_plan_tag: Optional[str]
+    subscription_start: Optional[date]
+    subscription_end: Optional[date]
+    first_seen_at: Optional[datetime]
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class CustomerDetail(CustomerOut):
+    notes: Optional[str]
+    referrer_id: Optional[str]
+    payments: List[dict] = []
+    utm_campaign: Optional[str] = None
+
+
+class CustomerUpdate(BaseModel):
+    telegram_username: Optional[str] = None
+    full_name: Optional[str] = None
+    current_plan: Optional[str] = None
+    current_plan_tag: Optional[str] = None
+    subscription_start: Optional[date] = None
+    subscription_end: Optional[date] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 TokenResponse.model_rebuild()

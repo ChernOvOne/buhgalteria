@@ -140,6 +140,28 @@ async def receive_payment(
         except Exception:
             pass
 
+    # Создаём/обновляем Customer
+    if payload.customer_id:
+        try:
+            from app.api.customers import get_or_create_customer, update_customer_on_payment
+            await get_or_create_customer(
+                db,
+                telegram_id=payload.customer_id,
+                telegram_username=None,
+                full_name=payload.customer_name,
+            )
+            await update_customer_on_payment(
+                db,
+                telegram_id=payload.customer_id,
+                amount=payload.amount,
+                plan=payload.plan,
+                plan_tag=payload.plan_tag,
+                sub_start=sub_start,
+                sub_end=sub_end,
+            )
+        except Exception:
+            pass
+
     await db.commit()
 
     # Уведомление

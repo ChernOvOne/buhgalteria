@@ -110,6 +110,21 @@ async def receive_lead(
         if pay_r.scalar_one_or_none():
             lead.converted = True
 
+    # Создаём или обновляем запись Customer
+    if payload.customer_id:
+        try:
+            from app.api.customers import get_or_create_customer
+            await get_or_create_customer(
+                db,
+                telegram_id=payload.customer_id,
+                telegram_username=payload.username,
+                full_name=payload.customer_name,
+                utm_code=payload.utm_code,
+                source="leadtex",
+            )
+        except Exception:
+            pass
+
     await db.commit()
 
     # Уведомление в Telegram о новом лиде

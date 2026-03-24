@@ -146,16 +146,21 @@ async def create_campaign(
 
     # Списываем бюджет в зависимости от источника
     if budget_source == "account":
-        # Ищем категорию "Реклама"
+        # Ищем или создаём категорию "Реклама"
         cat_r = await db.execute(
             select(Category).where(Category.name.ilike("%реклам%")).limit(1)
         )
         cat = cat_r.scalar_one_or_none()
+        if not cat:
+            cat = Category(name="Реклама", color="#BA7517", icon="megaphone")
+            db.add(cat)
+            await db.flush()
+
         t = Transaction(
             type=TransactionType.expense,
             amount=data.amount,
             date=data.date,
-            category_id=cat.id if cat else None,
+            category_id=cat.id,
             description=f"Реклама: {data.channel_name or 'канал'}",
             created_by=current_user.id,
         )
@@ -164,7 +169,6 @@ async def create_campaign(
         transaction_id = t.id
 
     elif budget_source == "investment" and data.investor_partner_id:
-        # Записываем как инвестицию партнёра
         inkas = InkasRecord(
             partner_id=data.investor_partner_id,
             type=InkasType.investment,
@@ -179,45 +183,28 @@ async def create_campaign(
     from app.api.utm import generate_utm_code
     utm_code = generate_utm_code()
 
-    try:
-        campaign = AdCampaign(
-            date=data.date,
-            channel_name=data.channel_name,
-            channel_url=data.channel_url,
-            format=data.format,
-            amount=data.amount,
-            subscribers_gained=data.subscribers_gained,
-            screenshot_url=data.screenshot_url,
-            notes=data.notes,
-            budget_source=budget_source,
-            investor_partner_id=data.investor_partner_id,
-            transaction_id=transaction_id,
-            utm_code=utm_code,
-            target_url=data.target_url,
-            target_type=data.target_type or "bot",
-            created_by=current_user.id,
-        )
-    except Exception:
-        # Фоллбек — без новых UTM полей если колонок ещё нет
-        campaign = AdCampaign(
-            date=data.date,
-            channel_name=data.channel_name,
-            channel_url=data.channel_url,
-            format=data.format,
-            amount=data.amount,
-            subscribers_gained=data.subscribers_gained,
-            screenshot_url=data.screenshot_url,
-            notes=data.notes,
-            budget_source=budget_source,
-            investor_partner_id=data.investor_partner_id,
-            transaction_id=transaction_id,
-            created_by=current_user.id,
-        )
+    campaign = AdCampaign(
+        date=data.date,
+        channel_name=data.channel_name,
+        channel_url=data.channel_url,
+        format=data.format,
+        amount=data.amount,
+        subscribers_gained=data.subscribers_gained,
+        screenshot_url=data.screenshot_url,
+        notes=data.notes,
+        budget_source=budget_source,
+        investor_partner_id=data.investor_partner_id,
+        transaction_id=transaction_id,
+        utm_code=utm_code,
+        target_url=data.target_url,
+        target_type=data.target_type or "bot",
+        created_by=current_user.id,
+    )
     db.add(campaign)
     await db.flush()
     await db.refresh(campaign)
 
-    # Уведомление
+    # Уведомление (fire-and-forget)
     try:
         company_r = await db.execute(select(AppSettings).where(AppSettings.key == "company_name"))
         company_row = company_r.scalar_one_or_none()
@@ -325,6 +312,115 @@ async def ads_summary(
             "subscribers": best.subscribers_gained,
             "amount": best.amount,
         } if best else None,
+    }
+
+
+@ads_router.get("/funnel")
+async def ads_funnel(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Воронка по всем кампаниям: клики → лиды → оплаты + ROI + LTV."""
+    from app.models import UtmClick, UtmLead, Payment, Customer
+
+    q = select(AdCampaign)
+    if date_from:
+        q = q.where(AdCampaign.date >= date_from)
+    if date_to:
+        q = q.where(AdCampaign.date <= date_to)
+    result = await db.execute(q.order_by(AdCampaign.date.desc()))
+    campaigns = result.scalars().all()
+
+    funnel_items = []
+    total_clicks = 0
+    total_leads = 0
+    total_converted = 0
+    total_revenue = 0.0
+    total_spent = 0.0
+
+    for c in campaigns:
+        if not c.utm_code:
+            funnel_items.append({
+                "id": c.id, "channel_name": c.channel_name, "date": str(c.date),
+                "amount": c.amount, "utm_code": None,
+                "clicks": 0, "leads": 0, "converted": 0, "revenue": 0,
+                "roi": 0, "cpa": None, "ltv": 0,
+            })
+            total_spent += c.amount
+            continue
+
+        # Клики
+        clicks_r = await db.execute(
+            select(func.count(UtmClick.id)).where(UtmClick.utm_code == c.utm_code)
+        )
+        clicks = clicks_r.scalar() or 0
+
+        # Лиды
+        leads_r = await db.execute(
+            select(func.count(UtmLead.id)).where(UtmLead.utm_code == c.utm_code)
+        )
+        leads = leads_r.scalar() or 0
+
+        # Конвертированные лиды
+        conv_r = await db.execute(
+            select(func.count(UtmLead.id)).where(
+                and_(UtmLead.utm_code == c.utm_code, UtmLead.converted == True)
+            )
+        )
+        converted = conv_r.scalar() or 0
+
+        # Выручка от лидов этой кампании
+        lead_cids_r = await db.execute(
+            select(UtmLead.customer_id).where(
+                and_(UtmLead.utm_code == c.utm_code, UtmLead.customer_id != None)
+            )
+        )
+        cust_ids = [r[0] for r in lead_cids_r.all()]
+        revenue = 0.0
+        ltv = 0.0
+        if cust_ids:
+            rev_r = await db.execute(
+                select(func.sum(Payment.amount)).where(Payment.customer_id.in_(cust_ids))
+            )
+            revenue = float(rev_r.scalar() or 0)
+            ltv_r = await db.execute(
+                select(func.avg(Customer.total_paid)).where(
+                    and_(Customer.telegram_id.in_(cust_ids), Customer.payments_count > 0)
+                )
+            )
+            ltv = float(ltv_r.scalar() or 0)
+
+        roi = round((revenue - c.amount) / c.amount * 100, 1) if c.amount > 0 else 0
+        cpa = round(c.amount / converted, 2) if converted > 0 else None
+
+        funnel_items.append({
+            "id": c.id, "channel_name": c.channel_name, "date": str(c.date),
+            "amount": c.amount, "utm_code": c.utm_code,
+            "clicks": clicks, "leads": leads, "converted": converted,
+            "revenue": round(revenue, 2), "roi": roi, "cpa": cpa,
+            "ltv": round(ltv, 2),
+        })
+
+        total_clicks += clicks
+        total_leads += leads
+        total_converted += converted
+        total_revenue += revenue
+        total_spent += c.amount
+
+    return {
+        "campaigns": funnel_items,
+        "totals": {
+            "clicks": total_clicks,
+            "leads": total_leads,
+            "converted": total_converted,
+            "revenue": round(total_revenue, 2),
+            "spent": round(total_spent, 2),
+            "roi": round((total_revenue - total_spent) / total_spent * 100, 1) if total_spent > 0 else 0,
+            "click_to_lead": round(total_leads / total_clicks * 100, 1) if total_clicks > 0 else 0,
+            "lead_to_pay": round(total_converted / total_leads * 100, 1) if total_leads > 0 else 0,
+        },
     }
 
 

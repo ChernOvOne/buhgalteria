@@ -33,16 +33,44 @@ def header():
 
 def status():
     print(c(BLUE, "→") + " Статус сервисов:\n")
-    run(f"{COMPOSE} ps", check=False)
+    result = run(f"{COMPOSE} ps --format json", check=False, capture=True)
+
+    # Парсим JSON вывод если доступен, иначе обычный вывод
+    if result.returncode == 0 and result.stdout and result.stdout.strip().startswith('{'):
+        import json
+        for line in result.stdout.strip().split('\n'):
+            try:
+                svc = json.loads(line)
+                name = svc.get("Service", svc.get("Name", "?"))
+                state = svc.get("State", svc.get("Status", "?"))
+                health = svc.get("Health", "")
+                if "running" in state.lower() or "up" in state.lower():
+                    icon = c(GREEN, "●")
+                    status_text = "работает"
+                    if health and "healthy" in health.lower():
+                        status_text += " (healthy)"
+                elif "restarting" in state.lower():
+                    icon = c(YELLOW, "●")
+                    status_text = "перезапускается"
+                else:
+                    icon = c(RED, "●")
+                    status_text = state
+                print(f"  {icon} {name:<16} {status_text}")
+            except (json.JSONDecodeError, KeyError):
+                pass
+    else:
+        run(f"{COMPOSE} ps", check=False)
 
     # Проверяем health
+    print()
     try:
-        result = run("curl -sf http://localhost:8000/api/health", check=False, capture=True)
-        if result.returncode == 0:
-            print(f"\n{c(GREEN, '✓')} Backend API: работает")
+        r = run("curl -sf http://localhost:8000/api/health", check=False, capture=True)
+        if r.returncode == 0:
+            print(f"  {c(GREEN, '✓')} Backend API: работает")
         else:
-            print(f"\n{c(RED, '✗')} Backend API: не отвечает")
-    except: pass
+            print(f"  {c(RED, '✗')} Backend API: не отвечает")
+    except Exception:
+        print(f"  {c(RED, '✗')} Backend API: не отвечает")
 
 def start():
     print(c(BLUE, "→") + " Запуск сервисов...")
@@ -61,7 +89,19 @@ def restart():
 def update():
     print(c(BLUE, "→") + " Обновление из репозитория...")
 
-    # Сохраняем SSL-конфиг если он настроен (содержит ssl_certificate)
+    # 1. Автобэкап БД перед обновлением
+    print(c(BLUE, "→") + " Создание резервной копии БД перед обновлением...")
+    try:
+        backup()
+    except Exception as e:
+        print(c(YELLOW, "!") + f" Бэкап не удался ({e}), продолжаем...")
+
+    # 2. Запоминаем текущий коммит для отката
+    old_commit = run("git rev-parse --short HEAD", check=False, capture=True)
+    old_hash = (old_commit.stdout or "").strip()
+    print(f"  Текущий коммит: {old_hash}")
+
+    # 3. Сохраняем SSL-конфиг если он настроен
     nginx_conf = f"{INSTALL_DIR}/nginx/nginx.conf"
     ssl_backup = None
     try:
@@ -69,41 +109,78 @@ def update():
             content = f.read()
         if "ssl_certificate" in content:
             ssl_backup = content
-            print(c(YELLOW, "!") + " SSL-конфиг сохранён, будет восстановлен после обновления")
+            print(c(YELLOW, "!") + " SSL-конфиг сохранён")
     except FileNotFoundError:
         pass
 
-    # Сбрасываем все конфликты и локальные изменения
+    # 4. Сохраняем .env
+    env_backup = None
+    env_file = f"{INSTALL_DIR}/.env"
+    try:
+        with open(env_file) as f:
+            env_backup = f.read()
+    except FileNotFoundError:
+        pass
+
+    # 5. Сбрасываем конфликты и забираем обновления
     run("git merge --abort", check=False)
     run("git checkout -- .", check=False)
     run("git clean -fd", check=False)
 
-    # Забираем обновления
     result = run("git pull origin main", check=False)
     if result.returncode != 0:
         print(c(RED, "✗") + " Git pull не удался. Пробуем жёсткий сброс...")
         run("git fetch origin main", check=False)
         run("git reset --hard origin/main", check=False)
 
-    # Восстанавливаем SSL-конфиг
+    # 6. Восстанавливаем SSL и .env
     if ssl_backup:
         with open(nginx_conf, "w") as f:
             f.write(ssl_backup)
         print(c(GREEN, "✓") + " SSL-конфиг восстановлен")
 
+    if env_backup:
+        with open(env_file, "w") as f:
+            f.write(env_backup)
+
+    # 7. Пересборка
     print(c(BLUE, "→") + " Пересборка backend и frontend...")
     run(f"{COMPOSE} up -d --build --no-deps backend frontend")
-
-    # Перезапуск nginx (применить обновлённый конфиг)
     run(f"{COMPOSE} restart nginx", check=False)
 
-    # Всегда пересобираем бота если токен задан
     token_val = _get_env("TG_BOT_TOKEN", "")
     if token_val:
         print(c(BLUE, "→") + " Пересборка Telegram бота...")
         run(f"{COMPOSE} --profile bot up -d --build --no-deps bot")
         print(c(GREEN, "✓") + " Telegram бот обновлён")
-    print(c(GREEN, "✓") + " Обновление завершено")
+
+    # 8. Health-check с таймаутом 60 сек
+    print(c(BLUE, "→") + " Проверка здоровья backend (до 60 сек)...")
+    import time
+    healthy = False
+    for i in range(20):
+        try:
+            r = run("curl -sf http://localhost:8000/api/health", check=False, capture=True)
+            if r.returncode == 0:
+                healthy = True
+                break
+        except Exception:
+            pass
+        time.sleep(3)
+
+    if healthy:
+        new_commit = run("git rev-parse --short HEAD", check=False, capture=True)
+        print(c(GREEN, "✓") + f" Обновление завершено ({old_hash} → {(new_commit.stdout or '').strip()})")
+    else:
+        print(c(RED, "✗") + " Backend не отвечает после обновления!")
+        confirm = input(f"  Откатить к коммиту {old_hash}? [y/N]: ").strip()
+        if confirm.lower() == "y" and old_hash:
+            print(c(BLUE, "→") + f" Откат к {old_hash}...")
+            run(f"git checkout {old_hash}", check=False)
+            run(f"{COMPOSE} up -d --build --no-deps backend frontend")
+            print(c(GREEN, "✓") + " Откат завершён")
+        else:
+            print(c(YELLOW, "!") + " Проверьте логи: docker compose logs backend --tail=50")
 
 def logs(service=None):
     svc = service or ""

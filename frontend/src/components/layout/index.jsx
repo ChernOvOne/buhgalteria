@@ -5,7 +5,7 @@ import { clsx } from '@/utils'
 import {
   LayoutDashboard, TrendingUp, TrendingDown, Megaphone,
   Server, Users, ArrowLeftRight, FileText, Settings,
-  LogOut, Menu, X, CreditCard, BarChart2,
+  LogOut, Menu, X, CreditCard, BarChart2, UserCheck,
 } from 'lucide-react'
 
 const NAV = [
@@ -13,7 +13,8 @@ const NAV = [
   { to: '/income',      icon: TrendingUp,      label: 'Доходы'   },
   { to: '/expenses',    icon: TrendingDown,    label: 'Расходы'  },
   { to: '/payments',    icon: CreditCard,      label: 'Платежи'  },
-  { to: '/ads',         icon: Megaphone,       label: 'Реклама'  },
+  { to: '/customers',   icon: UserCheck,       label: 'Клиенты'  },
+  { to: '/ads',         icon: Megaphone,       label: 'Маркетинг'},
   { to: '/servers',     icon: Server,          label: 'Сервера'  },
   { to: '/partners',    icon: Users,           label: 'Партнёры' },
   { to: '/inkas',       icon: ArrowLeftRight,  label: 'Инкас'    },
