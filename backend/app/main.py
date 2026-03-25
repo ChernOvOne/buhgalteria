@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Buhgalteria API",
     description="Система учёта финансов бизнеса",
-    version="1.0.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -139,4 +139,4 @@ app.include_router(customers_router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "1.3.0"}

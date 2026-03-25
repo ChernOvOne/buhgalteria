@@ -145,6 +145,20 @@ ENVEOF
 
 log ".env создан"
 
+# ── Защита .env ──────────────────────────────────────────────────────────────
+# Бэкап .env в защищённое место (за пределами git)
+mkdir -p /opt/buhgalteria-backups
+cp "$INSTALL_DIR/.env" /opt/buhgalteria-backups/.env.backup
+log ".env сохранён в /opt/buhgalteria-backups/.env.backup"
+
+# .gitignore уже в репозитории, но на всякий случай
+if ! grep -q "^\.env$" "$INSTALL_DIR/.gitignore" 2>/dev/null; then
+    echo ".env" >> "$INSTALL_DIR/.gitignore"
+fi
+
+# Запрещаем git отслеживать .env
+cd "$INSTALL_DIR" && git update-index --assume-unchanged .env 2>/dev/null || true
+
 # ── Запуск сервисов ───────────────────────────────────────────────────────────
 info "Сборка Docker образов и запуск (займёт 3-7 минут)..."
 docker compose up -d --build db redis backend frontend nginx

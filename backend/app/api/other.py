@@ -143,6 +143,8 @@ async def create_campaign(
 
     transaction_id = None
     budget_source = data.budget_source or "account"
+    # Пустые строки → None для FK полей (PostgreSQL требует NULL, не пустую строку)
+    investor_pid = data.investor_partner_id if data.investor_partner_id else None
 
     # Списываем бюджет в зависимости от источника
     if budget_source == "account":
@@ -168,9 +170,9 @@ async def create_campaign(
         await db.flush()
         transaction_id = t.id
 
-    elif budget_source == "investment" and data.investor_partner_id:
+    elif budget_source == "investment" and investor_pid:
         inkas = InkasRecord(
-            partner_id=data.investor_partner_id,
+            partner_id=investor_pid,
             type=InkasType.investment,
             amount=data.amount,
             date=data.date,
@@ -193,7 +195,7 @@ async def create_campaign(
         screenshot_url=data.screenshot_url,
         notes=data.notes,
         budget_source=budget_source,
-        investor_partner_id=data.investor_partner_id,
+        investor_partner_id=investor_pid,
         transaction_id=transaction_id,
         utm_code=utm_code,
         target_url=data.target_url,
@@ -210,9 +212,9 @@ async def create_campaign(
         company_row = company_r.scalar_one_or_none()
         company = company_row.value if company_row else "Бухгалтерия"
         partner_name = None
-        if data.investor_partner_id:
+        if investor_pid:
             from app.models import Partner as PartnerM
-            pr = await db.execute(select(PartnerM).where(PartnerM.id == data.investor_partner_id))
+            pr = await db.execute(select(PartnerM).where(PartnerM.id == investor_pid))
             pm = pr.scalar_one_or_none()
             partner_name = pm.name if pm else None
         import asyncio as _asyncio
@@ -257,6 +259,9 @@ async def update_campaign(
     if not c:
         raise HTTPException(status_code=404, detail="Кампания не найдена")
     for field, value in data.model_dump(exclude_none=True).items():
+        # Пустые строки → None для FK полей
+        if field in ("investor_partner_id",) and value == "":
+            value = None
         setattr(c, field, value)
     cps = round(c.amount / c.subscribers_gained, 2) if c.subscribers_gained and c.subscribers_gained > 0 else None
     return AdCampaignOut.model_validate({

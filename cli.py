@@ -28,8 +28,58 @@ def run(cmd, check=True, capture=False):
 
 def header():
     print(f"\n{BOLD}╔══════════════════════════════════════╗{NC}")
-    print(f"{BOLD}║         Buhgalteria CLI v1.0          ║{NC}")
+    print(f"{BOLD}║       Buhgalteria CLI v1.3.0          ║{NC}")
     print(f"{BOLD}╚══════════════════════════════════════╝{NC}\n")
+
+
+def ensure_env():
+    """Проверяет что .env существует и валиден, если нет — восстанавливает."""
+    env_file = f"{INSTALL_DIR}/.env"
+    backup_env = "/opt/buhgalteria-backups/.env.backup"
+
+    # .env есть и не пустой
+    if os.path.exists(env_file) and os.path.getsize(env_file) > 10:
+        # Обновляем бэкап
+        os.makedirs("/opt/buhgalteria-backups", exist_ok=True)
+        shutil.copy2(env_file, backup_env)
+        return True
+
+    print(c(RED, "✗") + " .env отсутствует или пуст!")
+
+    # Пробуем восстановить из бэкапа
+    if os.path.exists(backup_env) and os.path.getsize(backup_env) > 10:
+        shutil.copy2(backup_env, env_file)
+        print(c(GREEN, "✓") + " .env восстановлен из бэкапа")
+        return True
+
+    # Пробуем узнать пароль из контейнера БД
+    print(c(YELLOW, "!") + " Попытка определить пароль БД из контейнера...")
+    try:
+        r = run(f"{COMPOSE} exec -T db env", check=False, capture=True)
+        db_pass = ""
+        for line in (r.stdout or "").split("\n"):
+            if line.startswith("POSTGRES_PASSWORD="):
+                db_pass = line.split("=", 1)[1].strip()
+                break
+        if db_pass:
+            import secrets as _secrets
+            secret_key = _secrets.token_hex(32)
+            with open(env_file, "w") as f:
+                f.write(f"DB_PASSWORD={db_pass}\n")
+                f.write(f"SECRET_KEY={secret_key}\n")
+                f.write(f"DOMAIN=localhost\n")
+                f.write(f"TG_BOT_TOKEN=\n")
+                f.write(f"TG_CHANNEL_ID=\n")
+                f.write(f"TG_ADMIN_ID=\n")
+            print(c(GREEN, "✓") + " .env создан с паролем из БД (проверьте DOMAIN и TG настройки)")
+            print(c(YELLOW, "!") + f" Отредактируйте: nano {env_file}")
+            return True
+    except Exception:
+        pass
+
+    print(c(RED, "✗") + " Не удалось восстановить .env. Создайте вручную:")
+    print(f"  nano {env_file}")
+    return False
 
 def status():
     print(c(BLUE, "→") + " Статус сервисов:\n")
@@ -73,6 +123,7 @@ def status():
         print(f"  {c(RED, '✗')} Backend API: не отвечает")
 
 def start():
+    if not ensure_env(): return
     print(c(BLUE, "→") + " Запуск сервисов...")
     run(f"{COMPOSE} up -d")
     print(c(GREEN, "✓") + " Сервисы запущены")
@@ -83,10 +134,12 @@ def stop():
     print(c(GREEN, "✓") + " Сервисы остановлены")
 
 def restart():
+    if not ensure_env(): return
     stop()
     start()
 
 def update():
+    if not ensure_env(): return
     print(c(BLUE, "→") + " Обновление из репозитория...")
 
     # 1. Автобэкап БД перед обновлением
