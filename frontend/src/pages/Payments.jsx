@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { paymentsAPI } from '@/api'
 import { fmt, fmtDate, fmtDateTime, today, monthStart } from '@/utils'
-import { Button, Input, Modal, Table, Tr, Td, Badge, Empty, Spinner } from '@/components/ui'
+import { Button, Input, Modal, Table, Tr, Td, Badge, Empty, Spinner, KpiCard } from '@/components/ui'
 import { PageHeader } from '@/components/layout'
-import { Plus, Trash2, Copy, Eye, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { Plus, Trash2, Copy, Eye, AlertCircle, CheckCircle, Clock, Search, Filter } from 'lucide-react'
 import { useAuthStore } from '@/store'
 import toast from 'react-hot-toast'
 
@@ -11,7 +11,15 @@ const PLAN_COLORS = {
   '1m': 'info', '3m': 'success', '6m': 'warn', '12m': 'income',
 }
 
-// ── Попап деталей платежа ─────────────────────────────────────────────────────
+const SUB_FILTERS = [
+  { label: 'Все',           value: '',              icon: null },
+  { label: 'Активные',      value: 'active',        color: 'text-success-600' },
+  { label: 'Истекают',      value: 'expiring_soon', color: 'text-warn-600' },
+  { label: 'Истекли',       value: 'expired',       color: 'text-danger-600' },
+  { label: 'Без подписки',  value: 'no_sub',        color: 'text-gray-400' },
+]
+
+// ── Payment Detail Modal ──────────────────────────────────────────────────────
 function PaymentDetailModal({ paymentId, onClose }) {
   const [p, setP] = useState(null)
   useEffect(() => {
@@ -31,8 +39,8 @@ function PaymentDetailModal({ paymentId, onClose }) {
     <Modal open onClose={onClose} title={`Платёж — ${fmt(p.amount)}`} size="md">
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">Сумма</div>
+          <div className="bg-success-50 rounded-xl p-3">
+            <div className="text-xs text-success-600 mb-1">Сумма</div>
             <div className="text-lg font-medium text-success-600">{fmt(p.amount)}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
@@ -45,10 +53,11 @@ function PaymentDetailModal({ paymentId, onClose }) {
           {[
             ['Клиент', p.customer_name || '—'],
             ['Email', p.customer_email || '—'],
-            ['ID клиента', p.customer_id || '—'],
+            ['Telegram ID', p.customer_id || '—'],
             ['Источник', p.source || '—'],
             ['Внешний ID', p.external_id || '—'],
             ['Дата оплаты', fmtDate(p.date)],
+            ['Создано', p.created_at ? fmtDateTime(p.created_at) : '—'],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between border-b border-gray-50 pb-2">
               <span className="text-gray-400">{k}</span>
@@ -81,7 +90,7 @@ function PaymentDetailModal({ paymentId, onClose }) {
 
         {p.raw_data && (
           <details className="text-xs">
-            <summary className="text-gray-400 cursor-pointer hover:text-gray-600">Исходный JSON запрос</summary>
+            <summary className="text-gray-400 cursor-pointer hover:text-gray-600">Исходный JSON</summary>
             <pre className="bg-gray-50 rounded-lg p-3 mt-2 overflow-auto max-h-48 text-xs font-mono">
               {JSON.stringify(p.raw_data, null, 2)}
             </pre>
@@ -92,7 +101,7 @@ function PaymentDetailModal({ paymentId, onClose }) {
   )
 }
 
-// ── Главная страница ──────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function PaymentsPage() {
   const [payments, setPayments] = useState([])
   const [stats, setStats]       = useState(null)
@@ -101,29 +110,40 @@ export default function PaymentsPage() {
   const [tab, setTab]           = useState('payments')
   const [detailId, setDetailId] = useState(null)
   const [newKeyName, setNewKeyName] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const { isAdmin } = useAuthStore()
+
+  // Filters
   const [dateFrom, setDateFrom] = useState(monthStart())
   const [dateTo, setDateTo]     = useState(today())
   const [search, setSearch]     = useState('')
   const [subStatus, setSubStatus] = useState('')
+  const [planTag, setPlanTag]   = useState('')
   const [expiringDays, setExpiringDays] = useState(3)
-  const { isAdmin } = useAuthStore()
 
   const loadPayments = useCallback(async () => {
     setLoading(true)
     try {
+      const params = {
+        date_from: dateFrom, date_to: dateTo,
+        ...(search && { search }),
+        ...(subStatus && { subscription_status: subStatus }),
+        ...(planTag && { plan_tag: planTag }),
+        expiring_days: expiringDays,
+      }
       const [pRes, sRes] = await Promise.all([
-        paymentsAPI.list({ date_from: dateFrom, date_to: dateTo, search: search || undefined, subscription_status: subStatus || undefined, expiring_days: expiringDays }),
+        paymentsAPI.list(params),
         paymentsAPI.stats({ date_from: dateFrom, date_to: dateTo }),
       ])
       setPayments(pRes.data)
       setStats(sRes.data)
-    } finally { setLoading(false) }
-  }, [dateFrom, dateTo, search, subStatus, expiringDays])
+    } catch { toast.error('Ошибка загрузки') }
+    finally { setLoading(false) }
+  }, [dateFrom, dateTo, search, subStatus, planTag, expiringDays])
 
   const loadKeys = useCallback(async () => {
     if (isAdmin()) {
-      const r = await paymentsAPI.listKeys()
-      setKeys(r.data)
+      try { const r = await paymentsAPI.listKeys(); setKeys(r.data) } catch {}
     }
   }, [])
 
@@ -153,21 +173,40 @@ export default function PaymentsPage() {
     loadKeys()
   }
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text)
+  const copyText = (text) => {
+    navigator.clipboard?.writeText(text)
     toast.success('Скопировано')
   }
 
-  const getBaseUrl = () => window.location.origin
+  const getSubBadge = (p) => {
+    if (!p.sub_end) return null
+    const isExpired = new Date(p.sub_end) < new Date()
+    const isExpiringSoon = !isExpired && (new Date(p.sub_end) - new Date()) < 3 * 86400000
+    if (isExpired) return <Badge variant="danger">Истекла</Badge>
+    if (isExpiringSoon) return <Badge variant="warn">Истекает {fmtDate(p.sub_end)}</Badge>
+    return <Badge variant="success">до {fmtDate(p.sub_end)}</Badge>
+  }
+
+  const activeFiltersCount = [search, subStatus, planTag].filter(Boolean).length
 
   return (
     <div>
       <PageHeader title="Платежи" subtitle="Входящие оплаты через API">
+        <Button size="sm" variant={showFilters ? 'primary' : 'default'}
+          onClick={() => setShowFilters(!showFilters)}>
+          <Filter size={13} />
+          Фильтры
+          {activeFiltersCount > 0 && (
+            <span className="w-4 h-4 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center">
+              {activeFiltersCount}
+            </span>
+          )}
+        </Button>
       </PageHeader>
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-100 bg-white px-4">
-        {[['payments','Платежи'],['keys','API ключи'],['docs','Документация']].map(([k,v]) => (
+        {[['payments','Платежи'],['keys','API ключи']].map(([k,v]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-3 text-sm transition-all ${tab===k ? 'text-primary-600 border-b-2 border-primary-600 font-medium' : 'text-gray-400 hover:text-gray-600'}`}>
             {v}
@@ -175,132 +214,154 @@ export default function PaymentsPage() {
         ))}
       </div>
 
-      {/* Payments tab */}
       {tab === 'payments' && (
         <div>
-          {/* Stats */}
+          {/* KPI Cards */}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 md:p-4">
-              <div className="bg-white border border-gray-100 rounded-xl p-3">
-                <div className="text-xs text-gray-400 mb-1">Сумма за период</div>
-                <div className="text-lg font-medium text-success-600">{fmt(stats.total_amount)}</div>
-                <div className="text-xs text-gray-400">{stats.total_count} платежей</div>
-              </div>
-              <div className="bg-white border border-gray-100 rounded-xl p-3">
-                <div className="text-xs text-gray-400 mb-1">Сегодня</div>
-                <div className="text-lg font-medium">{fmt(stats.today_amount)}</div>
-                <div className="text-xs text-gray-400">{stats.today_count} платежей</div>
-              </div>
-              <div className="bg-white border border-gray-100 rounded-xl p-3">
-                <div className="text-xs text-gray-400 mb-1">Активных подписок</div>
-                <div className="text-lg font-medium text-primary-600">{stats.active_subscriptions}</div>
-              </div>
-              <div className={`border rounded-xl p-3 ${stats.expiring_soon > 0 ? 'bg-warn-50 border-warn-100' : 'bg-white border-gray-100'}`}>
-                <div className="text-xs text-gray-400 mb-1">Истекают через 3 дня</div>
-                <div className={`text-lg font-medium ${stats.expiring_soon > 0 ? 'text-warn-600' : ''}`}>
-                  {stats.expiring_soon}
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 md:p-5 pb-0">
+              <KpiCard label="За период" value={fmt(stats.total_amount)}
+                sub={`${stats.total_count} платежей`} subColor="text-gray-400" />
+              <KpiCard label="Сегодня" value={fmt(stats.today_amount)}
+                sub={`${stats.today_count} платежей`} subColor="text-success-600" />
+              <KpiCard label="Активных подписок" value={stats.active_subscriptions}
+                sub="пользователей" subColor="text-primary-600" />
+              <KpiCard label="Истекают 3 дня" value={stats.expiring_soon}
+                sub={stats.expiring_soon > 0 ? 'требуют внимания' : 'всё в порядке'}
+                subColor={stats.expiring_soon > 0 ? 'text-warn-600' : 'text-gray-400'} />
             </div>
           )}
 
-          {/* По тарифам */}
+          {/* Plan badges */}
           {stats?.plans?.length > 0 && (
-            <div className="px-3 md:px-4 pb-3">
+            <div className="px-3 md:px-5 pt-3 pb-0">
               <div className="flex gap-2 flex-wrap">
+                <button onClick={() => setPlanTag('')}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                    !planTag ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>Все тарифы</button>
                 {stats.plans.map(p => (
-                  <div key={p.tag || p.plan} className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-sm">
-                    <span className="font-medium">{p.plan || p.tag || 'Без тарифа'}</span>
-                    <span className="text-gray-400 ml-2">{p.count} шт · {fmt(p.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Filters */}
-          <div className="flex gap-2 px-3 md:px-4 pb-2 flex-wrap items-end">
-            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
-            <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="w-36" />
-            <Input placeholder="Поиск email, ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-48" />
-          </div>
-          <div className="flex gap-1.5 px-3 md:px-4 pb-3 flex-wrap">
-            {[
-              { label: 'Все',             value: '' },
-              { label: '✅ Активные',     value: 'active' },
-              { label: '⚠️ Истекают 3д',  value: 'expiring_soon' },
-              { label: '❌ Истекли',      value: 'expired' },
-              { label: '— Без подписки', value: 'no_sub' },
-            ].map(opt => (
-              <button key={opt.value} onClick={() => setSubStatus(opt.value)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                  subStatus === opt.value
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}>
-                {opt.label}
-              </button>
-            ))}
-            {subStatus === 'expiring_soon' && (
-              <div className="flex items-center gap-1.5 ml-2">
-                <span className="text-xs text-gray-400">Через</span>
-                {[3, 7, 14].map(d => (
-                  <button key={d} onClick={() => setExpiringDays(d)}
-                    className={`px-2 py-0.5 rounded-full text-xs ${expiringDays === d ? 'bg-warn-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                    {d}д
+                  <button key={p.tag || p.plan} onClick={() => setPlanTag(p.tag || '')}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      planTag === p.tag ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}>
+                    {p.plan || p.tag || '—'} · {p.count}
                   </button>
                 ))}
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Filters panel */}
+          <div className={`px-3 md:px-5 pt-3 space-y-3 ${showFilters ? '' : 'hidden md:block'}`}>
+            {/* Date + Search row */}
+            <div className="flex gap-2 flex-wrap items-end">
+              <Input type="date" label="От" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
+              <Input type="date" label="До" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" />
+              <div className="flex-1 min-w-48">
+                <Input placeholder="Поиск по имени, email, ID..." value={search}
+                  onChange={e => setSearch(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Subscription status filter */}
+            <div className="flex gap-1.5 flex-wrap">
+              {SUB_FILTERS.map(opt => (
+                <button key={opt.value} onClick={() => setSubStatus(opt.value)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                    subStatus === opt.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+              {subStatus === 'expiring_soon' && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-xs text-gray-400">через</span>
+                  {[3, 7, 14, 30].map(d => (
+                    <button key={d} onClick={() => setExpiringDays(d)}
+                      className={`px-2 py-0.5 rounded-full text-xs ${
+                        expiringDays === d ? 'bg-warn-600 text-white' : 'bg-gray-100 text-gray-500'
+                      }`}>{d}д</button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Table */}
-          <div className="mx-3 md:mx-4 bg-white border border-gray-100 rounded-xl overflow-hidden">
+          {/* Results */}
+          <div className="p-3 md:p-5">
             {loading ? (
               <div className="flex justify-center py-12"><Spinner /></div>
             ) : payments.length === 0 ? (
-              <Empty text="Платежей нет — настройте webhook и отправьте первый запрос" />
+              <Empty text="Платежей не найдено" />
             ) : (
-              <Table headers={['Дата','Клиент','Тариф','Подписка','Сумма','']}>
-                {payments.map(p => {
-                  const isExpired = p.sub_end && new Date(p.sub_end) < new Date()
-                  const isExpiringSoon = p.sub_end && !isExpired && (new Date(p.sub_end) - new Date()) < 3 * 86400000
-                  return (
-                    <Tr key={p.id} className="group">
-                      <Td className="text-xs text-gray-400 whitespace-nowrap">{fmtDate(p.date)}</Td>
-                      <Td>
-                        <div className="text-sm font-medium">{p.customer_name || p.customer_id || '—'}</div>
-                        {p.customer_email && <div className="text-xs text-gray-400">{p.customer_email}</div>}
-                      </Td>
-                      <Td>
-                        {p.plan && <Badge variant={PLAN_COLORS[p.plan_tag] || 'info'}>{p.plan}</Badge>}
-                      </Td>
-                      <Td>
-                        {p.sub_end ? (
-                          <span className={`text-xs font-medium ${isExpired ? 'text-danger-600' : isExpiringSoon ? 'text-warn-600' : 'text-success-600'}`}>
-                            {isExpired ? '✗ истекла' : isExpiringSoon ? `⚠ ${fmtDate(p.sub_end)}` : `✓ до ${fmtDate(p.sub_end)}`}
-                          </span>
-                        ) : '—'}
-                      </Td>
-                      <Td className="font-medium text-success-600">{fmt(p.amount)}</Td>
-                      <Td>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setDetailId(p.id)}
-                            className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                            <Eye size={12} />
-                          </button>
-                          {isAdmin() && (
-                            <button onClick={() => handleDeletePayment(p.id)}
-                              className="p-1.5 rounded hover:bg-danger-50 text-gray-400 hover:text-danger-600">
-                              <Trash2 size={12} />
-                            </button>
-                          )}
+              <>
+                {/* Mobile cards */}
+                <div className="md:hidden space-y-2">
+                  {payments.map(p => (
+                    <div key={p.id} onClick={() => setDetailId(p.id)}
+                      className="bg-white border border-gray-100 rounded-xl p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-full min-h-10 rounded-full flex-shrink-0 bg-success-600" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium truncate">
+                              {p.customer_name || p.customer_id || 'Платёж'}
+                            </span>
+                            <span className="text-sm font-medium text-success-600 flex-shrink-0 ml-2">
+                              +{fmt(p.amount)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-gray-400">{fmtDate(p.date)}</span>
+                            {p.plan && <Badge variant={PLAN_COLORS[p.plan_tag] || 'info'}>{p.plan}</Badge>}
+                            {getSubBadge(p)}
+                          </div>
                         </div>
-                      </Td>
-                    </Tr>
-                  )
-                })}
-              </Table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden md:block bg-white border border-gray-100 rounded-xl overflow-hidden">
+                  <Table headers={['Дата','Клиент','Тариф','Подписка','Сумма','']}>
+                    {payments.map(p => (
+                      <Tr key={p.id} onClick={() => setDetailId(p.id)} className="cursor-pointer group">
+                        <Td className="text-xs text-gray-400 whitespace-nowrap">{fmtDate(p.date)}</Td>
+                        <Td>
+                          <div className="text-sm font-medium">{p.customer_name || p.customer_id || '—'}</div>
+                          {p.customer_email && <div className="text-xs text-gray-400">{p.customer_email}</div>}
+                        </Td>
+                        <Td>
+                          {p.plan ? <Badge variant={PLAN_COLORS[p.plan_tag] || 'info'}>{p.plan}</Badge> : '—'}
+                        </Td>
+                        <Td>{getSubBadge(p) || '—'}</Td>
+                        <Td className="font-medium text-success-600">+{fmt(p.amount)}</Td>
+                        <Td>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={e => { e.stopPropagation(); setDetailId(p.id) }}
+                              className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                              <Eye size={12} />
+                            </button>
+                            {isAdmin() && (
+                              <button onClick={e => { e.stopPropagation(); handleDeletePayment(p.id) }}
+                                className="p-1.5 rounded hover:bg-danger-50 text-gray-400 hover:text-danger-600">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Table>
+                </div>
+
+                <div className="text-xs text-gray-400 mt-3 text-center">
+                  Показано {payments.length} платежей
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -308,121 +369,93 @@ export default function PaymentsPage() {
 
       {/* API Keys tab */}
       {tab === 'keys' && isAdmin() && (
-        <div className="p-3 md:p-4 space-y-4">
-          <form onSubmit={handleCreateKey} className="flex gap-3">
+        <div className="p-3 md:p-5 space-y-4">
+          <form onSubmit={handleCreateKey} className="flex gap-3 flex-wrap">
             <Input
               placeholder="Название ключа (например: Бот VPN)"
               value={newKeyName}
               onChange={e => setNewKeyName(e.target.value)}
-              className="flex-1"
+              className="flex-1 min-w-48"
             />
             <Button type="submit" variant="primary"><Plus size={13} /> Создать ключ</Button>
           </form>
-          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            <Table headers={['Название','Ключ','Запросов','Последнее использование','']}>
-              {keys.map(k => (
-                <Tr key={k.id} className="group">
-                  <Td className="font-medium">{k.name}</Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs font-mono bg-gray-50 px-2 py-0.5 rounded max-w-48 truncate select-all">
-                        {k.key}
-                      </code>
-                      <button
-                        onClick={() => copyToClipboard(k.key)}
-                        className="p-1.5 rounded hover:bg-primary-50 hover:text-primary-600 text-gray-400 flex-shrink-0"
-                        title="Скопировать ключ"
-                      >
+
+          {keys.length === 0 ? (
+            <Empty text="Нет API ключей — создайте первый для приёма платежей" />
+          ) : (
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-2">
+                {keys.map(k => (
+                  <div key={k.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{k.name}</span>
+                      <span className="text-xs text-gray-400">{k.request_count || 0} запросов</span>
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <code className="text-xs font-mono bg-gray-50 px-2 py-1 rounded flex-1 truncate select-all">{k.key}</code>
+                      <button onClick={() => copyText(k.key)} className="p-1.5 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600 flex-shrink-0">
                         <Copy size={12} />
                       </button>
                     </div>
-                  </Td>
-                  <Td className="text-gray-500">{k.request_count || 0}</Td>
-                  <Td className="text-xs text-gray-400">
-                    {k.last_used ? fmtDateTime(k.last_used) : 'Не использовался'}
-                  </Td>
-                  <Td>
-                    <button onClick={() => handleDeleteKey(k.id)}
-                      className="p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-danger-50 text-gray-400 hover:text-danger-600">
-                      <Trash2 size={12} />
-                    </button>
-                  </Td>
-                </Tr>
-              ))}
-            </Table>
-          </div>
-        </div>
-      )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">
+                        {k.last_used ? `Использовался: ${fmtDateTime(k.last_used)}` : 'Не использовался'}
+                      </span>
+                      <button onClick={() => handleDeleteKey(k.id)} className="text-xs text-danger-600 hover:underline">
+                        Отозвать
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-      {/* Docs tab */}
-      {tab === 'docs' && (
-        <div className="p-3 md:p-4 space-y-4 max-w-3xl">
-          <div className="bg-white border border-gray-100 rounded-xl p-5">
-            <div className="font-medium mb-2 text-sm">Endpoint для приёма платежей</div>
-            <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-3 mb-4">
-              <code className="text-sm font-mono flex-1">POST {getBaseUrl()}/api/payments/webhook</code>
-              <button onClick={() => copyToClipboard(`${getBaseUrl()}/api/payments/webhook`)}
-                className="text-gray-400 hover:text-primary-600 p-1">
-                <Copy size={14} />
+              {/* Desktop table */}
+              <div className="hidden md:block bg-white border border-gray-100 rounded-xl overflow-hidden">
+                <Table headers={['Название','Ключ','Запросов','Последнее использование','']}>
+                  {keys.map(k => (
+                    <Tr key={k.id} className="group">
+                      <Td className="font-medium">{k.name}</Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs font-mono bg-gray-50 px-2 py-0.5 rounded max-w-48 truncate select-all">{k.key}</code>
+                          <button onClick={() => copyText(k.key)}
+                            className="p-1.5 rounded hover:bg-primary-50 hover:text-primary-600 text-gray-400 flex-shrink-0">
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      </Td>
+                      <Td className="text-gray-500">{k.request_count || 0}</Td>
+                      <Td className="text-xs text-gray-400">
+                        {k.last_used ? fmtDateTime(k.last_used) : 'Не использовался'}
+                      </Td>
+                      <Td>
+                        <button onClick={() => handleDeleteKey(k.id)}
+                          className="p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-danger-50 text-gray-400 hover:text-danger-600">
+                          <Trash2 size={12} />
+                        </button>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Table>
+              </div>
+            </>
+          )}
+
+          {/* Webhook URL info */}
+          <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 text-sm">
+            <div className="font-medium text-primary-600 mb-2">Webhook URL для приёма платежей</div>
+            <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-primary-100">
+              <code className="text-xs font-mono flex-1 text-gray-700 break-all">
+                POST {window.location.origin}/api/payments/webhook
+              </code>
+              <button onClick={() => copyText(`${window.location.origin}/api/payments/webhook`)}
+                className="text-primary-600 hover:text-primary-800 flex-shrink-0 p-1">
+                <Copy size={12} />
               </button>
             </div>
-
-            <div className="font-medium mb-2 text-sm">Структура JSON</div>
-            <pre className="bg-gray-50 rounded-lg p-4 text-xs font-mono overflow-auto">
-{`{
-  "api_key": "ВАШ_КЛЮЧ",          // обязательно
-  "amount": 299.00,                 // обязательно, сумма в рублях
-  "external_id": "PAY-12345",      // уникальный ID для защиты от дублей
-  "customer_email": "user@mail.com",
-  "customer_id": "tg_123456",      // Telegram ID или любой другой
-  "customer_name": "Иван Иванов",
-  "plan": "3 месяц VPN",           // отображаемое название тарифа
-  "plan_tag": "3m",                 // машинный тег: 1m, 3m, 6m, 12m
-  "subscription_start": "2026-03-22",
-  "subscription_end": "2026-06-22",
-  "description": "Оплата VPN",
-  "source": "bot_1"                 // имя источника
-}`}
-            </pre>
-
-            <div className="font-medium mb-2 mt-4 text-sm">Пример curl</div>
-            <pre className="bg-gray-50 rounded-lg p-4 text-xs font-mono overflow-auto">
-{`curl -X POST ${getBaseUrl()}/api/payments/webhook \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "api_key": "ВАШ_КЛЮЧ",
-    "amount": 299,
-    "customer_id": "123456",
-    "plan": "1 месяц VPN",
-    "plan_tag": "1m",
-    "subscription_end": "2026-04-22"
-  }'`}
-            </pre>
-
-            <div className="font-medium mb-2 mt-4 text-sm">Ответы сервера</div>
-            <div className="space-y-2 text-sm">
-              <div className="flex gap-2 items-start">
-                <Badge variant="success">200</Badge>
-                <code className="text-xs font-mono">{`{"ok": true, "status": "created", "payment_id": "..."}`}</code>
-              </div>
-              <div className="flex gap-2 items-start">
-                <Badge variant="warn">200</Badge>
-                <code className="text-xs font-mono">{`{"ok": true, "status": "duplicate"}`} — платёж с таким external_id уже есть</code>
-              </div>
-              <div className="flex gap-2 items-start">
-                <Badge variant="danger">401</Badge>
-                <code className="text-xs font-mono">Неверный API ключ</code>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 text-sm text-primary-600">
-            <div className="font-medium mb-1">Как это работает</div>
-            <div className="text-xs space-y-1 text-primary-600">
-              <div>• Каждый принятый платёж автоматически создаёт запись дохода</div>
-              <div>• Срок подписки отслеживается — на дашборде видны истекающие через 3 дня</div>
-              <div>• Все платежи видны в разделе Платежи с деталями клиента</div>
-              <div>• Создайте отдельный API-ключ для каждого бота/источника</div>
+            <div className="text-xs text-primary-600 mt-2">
+              Полная документация: Настройки → Документация API
             </div>
           </div>
         </div>

@@ -83,7 +83,9 @@ function HeatMap({ data, onDayClick }) {
   const dayOffset = (new Date(year, month, 1).getDay() + 6) % 7
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
-    const key = new Date(year, month, i + 1).toISOString().slice(0, 10)
+    const d = new Date(year, month, i + 1)
+    // Используем локальную дату, НЕ toISOString() (UTC сдвигает дату)
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const amount = byDate[key] || 0
     return { day: i + 1, amount, intensity: amount / max, date: key }
   })
