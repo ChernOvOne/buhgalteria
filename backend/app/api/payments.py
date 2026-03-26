@@ -215,7 +215,20 @@ async def list_payments(
     if date_to:
         filters.append(Payment.date <= date_to)
     if plan_tag:
-        filters.append(Payment.plan_tag == plan_tag)
+        # Фронтенд шлёт составной ключ "tag|plan" для уникальности
+        if "|" in plan_tag:
+            tag_part, plan_part = plan_tag.split("|", 1)
+            tag_filters = []
+            if tag_part:
+                tag_filters.append(Payment.plan_tag == tag_part)
+            if plan_part:
+                tag_filters.append(Payment.plan == plan_part)
+            if tag_filters:
+                filters.append(and_(*tag_filters))
+        else:
+            filters.append(
+                (Payment.plan_tag == plan_tag) | (Payment.plan == plan_tag)
+            )
     if subscription_status:
         _today = date.today()
         if subscription_status == "active":
